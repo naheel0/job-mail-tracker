@@ -81,7 +81,17 @@ def sync(folder: Path, days: int | None = None) -> int:
     since = _since()
     imap = imaplib.IMAP4_SSL(host)
     try:
-        imap.login(user, pw)
+        try:
+            imap.login(user, pw)
+        except imaplib.IMAP4.error as exc:
+            raise SystemExit(
+                f"Gmail rejected the login ({exc}). Checklist:\n"
+                "  1. IMAP_USER = your full real Gmail address (not the ... placeholder)\n"
+                "  2. 2-Step Verification must be ON (myaccount.google.com/security)\n"
+                "  3. IMAP_PASSWORD = a 16-char APP password, not your account password\n"
+                "     (Google account -> search 'App passwords' -> create one)\n"
+                "  4. spaces in the app password are fine, quotes optional"
+            ) from exc
         imap.select("INBOX")
         _, found = imap.search(None, "SINCE", since.strftime("%d-%b-%Y"))
         new = 0
