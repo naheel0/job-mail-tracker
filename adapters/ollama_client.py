@@ -50,6 +50,13 @@ def classify(record: EmailRecord) -> EmailRecord:
     return record
 
 
+class OllamaClassifier:
+    """ports.Classifier implementation — what main.py wires in."""
+
+    def classify(self, record: EmailRecord) -> EmailRecord:
+        return classify(record)
+
+
 def _self_check() -> None:
     sample = EmailRecord(id="chk", from_addr="jane@acme.com",
                          subject="Interview invite - Backend Developer",
