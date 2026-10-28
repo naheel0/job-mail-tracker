@@ -17,7 +17,6 @@ sys.path.insert(0, str(ROOT))
 from adapters.csv_store import load, save
 from adapters.eml_parser import parse_dir
 from adapters.ollama_client import OllamaClassifier
-from services.classify import classify_all
 from services.nudge import needs_followup, waiting_days
 from services.track import merge
 
@@ -58,9 +57,18 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
     state = _load_state()
     new = [r for r in records if r.id not in state]
     if new:
-        print(f"Classifying {len(new)} new email(s) with Ollama ({OllamaClassifier.__name__})...")
-        for rec in classify_all(new, OllamaClassifier()):
-            state[rec.id] = {"label": rec.label, "company": rec.company, "role": rec.role}
+        print(f"Classifying {len(new)} new email(s) with Ollama...", flush=True)
+        clf = OllamaClassifier()
+        for i, rec in enumerate(new, 1):
+            try:
+                done = clf.classify(rec)
+            except Exception as exc:  # one bad email != lost batch
+                print(f"  skip {rec.subject[:40]!r}: {exc}", file=sys.stderr, flush=True)
+                continue
+            state[done.id] = {"label": done.label, "company": done.company, "role": done.role}
+            if i % 10 == 0:  # save incrementally: a crash at #300 keeps #1-299
+                STATE_FILE.write_text(json.dumps(state, indent=1), encoding="utf-8")
+                print(f"  {i}/{len(new)} classified", flush=True)
         STATE_FILE.write_text(json.dumps(state, indent=1), encoding="utf-8")
 
     for rec in records:  # fill every record from cache (old + just-classified)
