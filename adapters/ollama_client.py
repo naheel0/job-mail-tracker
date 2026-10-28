@@ -16,9 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 
 from core.models import LABELS, EmailRecord
 
-MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")  # exact tag: bare 'llama3.2' 404s if only :3b pulled
 HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "120"))
+TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "180"))  # first run loads a 2GB model into RAM
 PROMPT = (Path(__file__).resolve().parents[1] / "prompts" / "classify.txt").read_text(encoding="utf-8")
 
 
@@ -33,6 +33,11 @@ def _generate(prompt: str) -> dict:
         raise SystemExit(
             f"Cannot reach Ollama at {HOST} ({exc.reason}).\n"
             f"Fix: run `ollama serve`, then `ollama pull {MODEL}`"
+        ) from exc
+    except TimeoutError as exc:
+        raise SystemExit(
+            f"Ollama did not answer in {TIMEOUT}s (first run loads the model).\n"
+            f"Fix: retry, or raise OLLAMA_TIMEOUT={TIMEOUT * 2}"
         ) from exc
 
 
