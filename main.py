@@ -43,6 +43,21 @@ def report(rows: list[dict]) -> None:
               f"{row['last_contact'][:10]}")
 
 
+def _publish(records, state) -> list[dict]:
+    """Fill records from cache, merge, write CSV + data.js. Called every 10 emails so the
+    dashboard fills up DURING long runs, not only at the end."""
+    for rec in records:
+        cached = state.get(rec.id)
+        if cached:
+            rec.label, rec.company, rec.role = cached["label"], cached["company"], cached["role"]
+    rows = merge(load(), records)
+    save(rows)
+    # ponytail: data.js instead of fetch(tracker.csv) - file:// blocks fetch, double-click must work
+    (ROOT / "ui" / "data.js").write_text(
+        "window.TRACKER_DATA = " + json.dumps(rows, indent=1) + ";\n", encoding="utf-8")
+    return rows
+
+
 def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
     if with_sync:
         from adapters.imap_fetch import sync
@@ -66,21 +81,13 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
                 print(f"  skip {rec.subject[:40]!r}: {exc}", file=sys.stderr, flush=True)
                 continue
             state[done.id] = {"label": done.label, "company": done.company, "role": done.role}
-            if i % 10 == 0:  # save incrementally: a crash at #300 keeps #1-299
+            if i % 10 == 0:
                 STATE_FILE.write_text(json.dumps(state, indent=1), encoding="utf-8")
+                _publish(records, state)  # UI grows live
                 print(f"  {i}/{len(new)} classified", flush=True)
         STATE_FILE.write_text(json.dumps(state, indent=1), encoding="utf-8")
 
-    for rec in records:  # fill every record from cache (old + just-classified)
-        cached = state.get(rec.id)
-        if cached:
-            rec.label, rec.company, rec.role = cached["label"], cached["company"], cached["role"]
-
-    rows = merge(load(), records)
-    save(rows)
-    # ponytail: data.js instead of fetch(tracker.csv) - file:// blocks fetch, double-click must work
-    (ROOT / "ui" / "data.js").write_text(
-        "window.TRACKER_DATA = " + json.dumps(rows, indent=1) + ";\n", encoding="utf-8")
+    rows = _publish(records, state)
     print(f"Saved tracker.csv ({len(rows)} rows), processed {len(records)} email(s), "
           f"{len(new)} newly classified.")
     report(rows)

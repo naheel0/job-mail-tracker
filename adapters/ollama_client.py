@@ -41,6 +41,17 @@ def _generate(prompt: str) -> dict:
         ) from exc
 
 
+_EMPTY = {"", "null", "none", "n/a", "na", "-", "unknown"}
+
+
+def _clean(value) -> str | None:
+    """Models answer 'null' as a string - that must never become a company name."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip().lower()
+    return None if v in _EMPTY else v
+
+
 def classify(record: EmailRecord) -> EmailRecord:
     """Fills label/company/role. Bad model output: retry once, then fall back to 'noise'."""
     answer: dict = {}
@@ -50,8 +61,11 @@ def classify(record: EmailRecord) -> EmailRecord:
         if isinstance(answer, dict) and answer.get("label") in LABELS:
             break
     record.label = answer.get("label") if answer.get("label") in LABELS else "noise"
-    record.company = (answer.get("company") or None) if isinstance(answer, dict) else None
-    record.role = (answer.get("role") or None) if isinstance(answer, dict) else None
+    if isinstance(answer, dict):
+        record.company = _clean(answer.get("company"))
+        record.role = _clean(answer.get("role"))
+    else:
+        record.company = record.role = None
     return record
 
 
@@ -63,6 +77,8 @@ class OllamaClassifier:
 
 
 def _self_check() -> None:
+    assert _clean("null") is None and _clean("  N/A ") is None and _clean(None) is None
+    assert _clean("Acme Corp") == "acme corp", _clean("Acme Corp")  # junk guard first, no model needed
     sample = EmailRecord(id="chk", from_addr="jane@acme.com",
                          subject="Interview invite - Backend Developer",
                          date="2026-10-27T09:30:00+00:00",
