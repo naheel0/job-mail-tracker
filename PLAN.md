@@ -37,14 +37,14 @@
 - [ ] Sections: What I Built / Demo / Code / How I Built It / Why Open Innovation Matters / Prize Categories
 - [ ] Publish, then share (reactions break ties)
 
-### Phase 6 — Auto-sync via IMAP (only if MVP is done ahead of schedule)
-- [ ] `adapters/imap_fetch.py` — Python stdlib `imaplib`, no new dependencies
-- [ ] Fetch only emails **since last run** (`.sync_state` file stores last date)
-- [ ] Save as `.eml` into `inbox/` → existing pipeline unchanged
-- [ ] `python main.py --sync` = fetch + process + report in one command
-- [ ] `.env` for credentials: `IMAP_HOST`, `IMAP_USER`, `IMAP_APP_PASSWORD` (add `.env` to `.gitignore`!)
-- [ ] Gmail setup notes: 2FA → App Password → `imap.gmail.com`
-- [ ] Works with any IMAP provider (Outlook, Yahoo, …) = one adapter covers all
+### Phase 6 — Auto-sync via IMAP ✅ DONE (Issue 11)
+- [x] `adapters/imap_fetch.py` — Python stdlib `imaplib`, no new dependencies
+- [x] Fetch only emails **since last run** (`.sync_state` file stores last date)
+- [x] Save as `.eml` into `inbox/` → existing pipeline unchanged
+- [x] `python main.py --sync` = fetch + process + report in one command
+- [x] `.env` for credentials: `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD` (`.env` in `.gitignore`)
+- [x] Gmail setup notes: 2FA → App Password → `imap.gmail.com`
+- [x] Works with any IMAP provider (Outlook, Yahoo, …) = one adapter covers all
 
 > **Rule:** if this isn't working 24h before the deadline, cut it from the post.
 > A working export-based tool beats a broken login flow. MVP is what ships.

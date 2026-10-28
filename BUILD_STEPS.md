@@ -88,4 +88,12 @@ Do them in order. Check off when done.
 ---
 
 **Buffer:** Issues 1–8 = build. Issue 9 = Day 3 morning. Issue 10 = Day 3 afternoon, **publish before Oct 31 11:59 PM PDT.**
-**Optional (only after issue 8):** Issue 11 — IMAP `--sync` adapter (see PLAN.md Phase 6).
+
+## Issue 11: IMAP sync ✅ DONE (built early, ahead of schedule)
+**Files:** `adapters/imap_fetch.py`, `--sync` flag in `main.py`
+**Done when:** `python main.py --sync` without `.env` → clear config instructions; with `.env` → new mail lands in `inbox/`.
+
+- [x] stdlib `imaplib`, zero dependencies
+- [x] fetch since `.sync_state` (last sync date), dedup by Message-ID filename
+- [x] `.env` credentials, gitignored, works with any IMAP provider
+- [x] self-check: save + dedup + config-error messages (no network needed)

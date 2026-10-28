@@ -44,7 +44,12 @@ def report(rows: list[dict]) -> None:
               f"{row['last_contact'][:10]}")
 
 
-def main(folder: Path = ROOT / "inbox") -> None:
+def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
+    if with_sync:
+        from adapters.imap_fetch import sync
+        print(f"Syncing IMAP -> {folder}/ ...")
+        print(f"Fetched {sync(folder)} new email(s) (deduped by Message-ID).")
+
     records = parse_dir(folder)
     if not records:
         print(f"No .eml files found in {folder}/")
@@ -74,4 +79,5 @@ def main(folder: Path = ROOT / "inbox") -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "inbox")
+    args = [a for a in sys.argv[1:] if a != "--sync"]
+    main(Path(args[0]) if args else ROOT / "inbox", with_sync="--sync" in sys.argv)
