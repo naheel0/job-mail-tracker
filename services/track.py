@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 
-from core.models import FIELDS, EmailRecord
+from core.models import EmailRecord
 
 # label -> status (None = no status change, e.g. followups and newsletters)
 STATUS_BY_LABEL = {
