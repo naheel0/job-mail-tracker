@@ -37,14 +37,16 @@ def _generate(prompt: str) -> dict:
 
 
 def classify(record: EmailRecord) -> EmailRecord:
-    """Returns the record with label/company/role filled in. Bad output -> 'noise'."""
-    answer = _generate(PROMPT.format(sender=record.from_addr, subject=record.subject,
-                                     date=record.date, body=record.body))
-    record.label = answer.get("label", "noise")
-    if record.label not in LABELS:  # ponytail: models drift; mislabel beats crash
-        record.label = "noise"
-    record.company = answer.get("company") or None
-    record.role = answer.get("role") or None
+    """Fills label/company/role. Bad model output: retry once, then fall back to 'noise'."""
+    answer: dict = {}
+    for _ in range(2):  # ponytail: format:'json' already guarantees JSON; this catches wrong shape
+        answer = _generate(PROMPT.format(sender=record.from_addr, subject=record.subject,
+                                         date=record.date, body=record.body))
+        if isinstance(answer, dict) and answer.get("label") in LABELS:
+            break
+    record.label = answer.get("label") if answer.get("label") in LABELS else "noise"
+    record.company = (answer.get("company") or None) if isinstance(answer, dict) else None
+    record.role = (answer.get("role") or None) if isinstance(answer, dict) else None
     return record
 
 
