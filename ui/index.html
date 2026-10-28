@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Mail Tracker</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --text:#e6e9ef; --dim:#8b93a5;
+          --applied:#3b82f6; --interviewing:#a855f7; --rejected:#ef4444; --offer:#22c55e; --nudge:#f59e0b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; padding:32px 24px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { margin:0 0 4px; font-size:24px; }
+  #summary { color:var(--dim); margin:0 0 20px; }
+  #filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  button { background:var(--card); color:var(--text); border:1px solid var(--line);
+           border-radius:99px; padding:6px 14px; font-size:13px; cursor:pointer; }
+  button.on { background:var(--text); color:var(--bg); border-color:var(--text); }
+  table { width:100%; border-collapse:collapse; background:var(--card);
+          border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+  tr:last-child td { border-bottom:none; }
+  .badge { font-size:12px; padding:2px 10px; border-radius:99px; color:#fff; white-space:nowrap; }
+  .s-applied        { background:var(--applied); }
+  .s-interviewing   { background:var(--interviewing); }
+  .s-rejected       { background:var(--rejected); }
+  .s-offer          { background:var(--offer); }
+  .s-unclassified   { background:#4b5563; }
+  .nudge { margin-left:8px; background:var(--nudge); color:#1a1200; }
+  .stale { color:var(--nudge); }
+  .empty { padding:24px; color:var(--dim); text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Job Mail Tracker</h1>
+  <p id="summary">loading…</p>
+  <div id="filters"></div>
+  <table>
+    <thead><tr><th>Company</th><th>Role</th><th>Status</th><th>Last contact</th><th>Waiting</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="empty" class="empty" hidden></div>
+</div>
+
+<script src="data.js"></script>
+<script>
+// ponytail: same nudge rule as services/nudge.py (>=7d + still 'applied') - keep in sync
+const NUDGE_DAYS = 7;
+const STATUSES = ["all", "followup", "applied", "interviewing", "rejected", "offer"];
+const today = new Date();
+let filter = "all";
+
+const days = r => r.last_contact
+  ? Math.floor((today - new Date(r.last_contact)) / 864e5) : null;
+const isNudge = r =>
+  (r.status === "" || r.status === "applied") && days(r) !== null && days(r) >= NUDGE_DAYS;
+
+function render() {
+  const data = (window.TRACKER_DATA || []);
+  const shown = data.filter(r =>
+    filter === "all" ? true :
+    filter === "followup" ? isNudge(r) : (r.status || "") === filter);
+
+  document.getElementById("rows").innerHTML = shown.map(r => `
+    <tr>
+      <td>${r.company || "?"}</td>
+      <td>${r.role || "-"}</td>
+      <td><span class="badge s-${r.status || "unclassified"}">${r.status || "unclassified"}</span>${
+        isNudge(r) ? '<span class="badge nudge">follow up</span>' : ""}</td>
+      <td>${(r.last_contact || "").slice(0, 10) || "-"}</td>
+      <td class="${isNudge(r) ? "stale" : ""}">${days(r) === null ? "-" : days(r) + "d"}</td>
+    </tr>`).join("");
+
+  const empty = document.getElementById("empty");
+  empty.hidden = shown.length > 0;
+  empty.textContent = data.length ? "Nothing matches this filter."
+                                  : "No data yet - run: python main.py";
+
+  const nudges = data.filter(isNudge).length;
+  document.getElementById("summary").textContent =
+    `${data.length} tracked · ${nudges} need follow-up · last run ${new Date().toLocaleDateString()}`;
+
+  document.querySelectorAll("#filters button").forEach(b =>
+    b.classList.toggle("on", b.dataset.f === filter));
+}
+
+document.getElementById("filters").innerHTML = STATUSES.map(f => {
+  const data = window.TRACKER_DATA || [];
+  const n = f === "all" ? data.length : f === "followup"
+      ? data.filter(isNudge).length : data.filter(r => (r.status || "") === f).length;
+  return `<button data-f="${f}" onclick="filter='${f}';render()">${f} (${n})</button>`;
+}).join("");
+
+render();
+</script>
+</body>
+</html>

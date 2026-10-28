@@ -65,6 +65,9 @@ def main(folder: Path = ROOT / "inbox") -> None:
 
     rows = merge(load(), records)
     save(rows)
+    # ponytail: data.js instead of fetch(tracker.csv) - file:// blocks fetch, double-click must work
+    (ROOT / "ui" / "data.js").write_text(
+        "window.TRACKER_DATA = " + json.dumps(rows, indent=1) + ";\n", encoding="utf-8")
     print(f"Saved tracker.csv ({len(rows)} rows), processed {len(records)} email(s), "
           f"{len(new)} newly classified.")
     report(rows)
