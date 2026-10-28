@@ -1,0 +1,117 @@
+# System Design
+
+## Architecture: Pipeline + Ports & Adapters (hexagonal lite)
+
+Every stage does one job, stages never import each other — they connect only through the shared `EmailRecord` shape.
+
+```
+            ┌──────────────────────── main.py (wiring only) ────────────────┐
+            │                                                                │
+ .eml files → [ Parse ] → [ Classify ] → [ Track ] → [ Nudge ] → tracker.csv
+            │    │            │             │           │            │
+            └────┴────────────┴─────────────┴───────────┴────────────┴──→ ui/ (reads CSV)
+              pure functions, one job each, talk only via EmailRecord
+```
+
+## File structure — one concern per file
+
+```
+job-mail-tracker/
+├── main.py                 # CLI + wiring ONLY (~30 lines)
+├── core/
+│   ├── models.py           # EmailRecord dataclass (~15 lines)
+│   └── ports.py            # Classifier / Store protocols (~20 lines)
+├── adapters/
+│   ├── eml_parser.py       # .eml → EmailRecord
+│   ├── imap_fetch.py       # (Phase 6) pull new mail → inbox/*.eml (stdlib imaplib)
+│   ├── ollama_client.py    # Classifier impl (swap → llama.cpp, OpenAI later)
+│   └── csv_store.py        # Store impl (swap → SQLite later)
+├── services/
+│   ├── classify.py         # loop + prompt orchestration
+│   ├── track.py            # status transitions (applied → interview → …)
+│   └── nudge.py            # "no reply in N days" rules
+├── prompts/
+│   └── classify.txt        # prompt = data, not code
+├── inbox/                  # input: exported .eml files
+├── tracker.csv             # output: the tracker
+└── ui/
+    ├── index.html
+    └── app.ts              # fetch tracker.csv → table + filters
+```
+
+## The three rules
+
+### 1. One-way dependency
+
+```
+main.py → services → core (ports) ← adapters
+```
+
+- Services depend only on **protocols** (`Classifier`, `Store`), never on concrete implementations.
+- Ollama lives only in `ollama_client.py`. Swapping the model = edit 1 file.
+- `services/` contains zero I/O code — pure business rules, trivially testable.
+
+### 2. Small files (< ~60 lines)
+
+| File | Job |
+|---|---|
+| `core/models.py` | the shared contract (`EmailRecord`) |
+| `core/ports.py` | 2 interfaces |
+| `adapters/*` | 1 I/O concern each |
+| `services/*` | 1 business rule each |
+| `main.py` | wire it together |
+
+### 3. Data, not calls
+
+Each stage takes data in, returns data out (JSON-serializable). Any stage can later become a CLI subcommand, a queue worker, or a test fixture without touching the others.
+
+## Core contract
+
+```python
+@dataclass
+class EmailRecord:
+    id: str            # hash of message-id
+    from_addr: str
+    subject: str
+    date: str          # ISO 8601
+    body: str          # truncated plain text
+    # filled by Classify stage:
+    label: str         # applied | recruiter | interview | rejected | offer | followup | noise
+    company: str | None
+    role: str | None
+    status: str | None # applied → interviewing → rejected | offer
+```
+
+## Data flow
+
+0. **Sync (optional, Phase 6)** — `imap_fetch.py` logs in over IMAP, downloads only emails since `.sync_state`, saves them as `inbox/*.eml`. Fetch is the only step that needs internet.
+1. **Parse** — `eml_parser.py` reads `inbox/*.eml` → `EmailRecord` (dedup by `id`)
+2. **Classify** — `ollama_client.py` sends subject+body to local model → label/company/role JSON
+3. **Track** — `track.py` merges records into `tracker.csv`, keeps newest status per company+role
+4. **Nudge** — `nudge.py` compares `last contact` vs today → "needs attention" list
+5. **Report** — `main.py` prints the daily summary
+6. **UI** — `ui/app.ts` fetches `tracker.csv`, renders table + status filters
+
+## Error handling & edges
+
+- Malformed `.eml` → log + skip, never crash the batch
+- Ollama down / model missing → fail fast with a clear message ("is `ollama serve` running?")
+- Model returns invalid JSON → retry once, then label `noise` (unclassified never blocks the pipeline)
+- Duplicate emails → dedup on `Message-ID` hash
+
+## Scaling path (later — design allows it, we don't build it now)
+
+| Outgrown | Upgrade | Files touched |
+|---|---|---|
+| CSV | SQLite | `csv_store.py` → `sqlite_store.py` (1 file) |
+| one model | model registry | add 1 adapter |
+| batch runs | daemon + queue | `services/` unchanged ✅ |
+| console report | web app | UI already separate ✅ |
+
+**Adapters change. Services don't.**
+
+## Testing strategy
+
+- `services/track.py` and `services/nudge.py`: pure functions → plain `assert` tests with fixed dates
+- Parser test: 1 fixture `.eml`
+- Classifier: mock `Classifier` protocol (no network, no model in tests)

@@ -1,0 +1,66 @@
+# Development Plan
+
+**Deadline: October 31, 2026, 11:59 PM PDT** (solo — naheel0)
+**Stack: Python + Ollama + TS dashboard** (built with AI assistance)
+
+## Build order — prove it works first, polish after
+
+### Phase 1 — Contract + skeleton (Day 1, ~1h)
+- [ ] Create directory structure
+- [ ] `core/models.py` — settle `EmailRecord` fields (the contract)
+- [ ] `core/ports.py` — `Classifier` + `Store` protocols
+- [ ] `README.md`, docs (done)
+
+### Phase 2 — The spine (Day 1–2)
+- [ ] `adapters/eml_parser.py` — `.eml` → `EmailRecord`
+- [ ] Export 3–5 real `.eml` files into `inbox/`, verify parse
+- [ ] `adapters/ollama_client.py` — classify 1 email end to end
+- [ ] `prompts/classify.txt` — label/company/role → strict JSON
+- [ ] **Milestone: 1 email goes in → labeled record comes out**
+
+### Phase 3 — Business rules (Day 2)
+- [ ] `services/classify.py` — batch loop, invalid-JSON retry, dedup
+- [ ] `services/track.py` — merge → `tracker.csv`, status transitions
+- [ ] `services/nudge.py` — no reply in N days → attention list
+- [ ] `main.py` — wire stages + print daily report
+- [ ] One `assert`-based self-check for track/nudge (fixed dates)
+
+### Phase 4 — Demo (Day 2–3)
+- [ ] `ui/index.html` + `ui/app.ts` — table + status filters + nudge badges
+- [ ] Screenshot for the DEV post
+
+### Phase 5 — Ship (Day 3, before Oct 31)
+- [ ] Push to `github.com/naheel0/job-mail-tracker` (public)
+- [ ] Record agent session (DevRelay) for the post
+- [ ] Write DEV post from the official template
+- [ ] Tags: `#devchallenge`, `#hf26challenge`
+- [ ] Sections: What I Built / Demo / Code / How I Built It / Why Open Innovation Matters / Prize Categories
+- [ ] Publish, then share (reactions break ties)
+
+### Phase 6 — Auto-sync via IMAP (only if MVP is done ahead of schedule)
+- [ ] `adapters/imap_fetch.py` — Python stdlib `imaplib`, no new dependencies
+- [ ] Fetch only emails **since last run** (`.sync_state` file stores last date)
+- [ ] Save as `.eml` into `inbox/` → existing pipeline unchanged
+- [ ] `python main.py --sync` = fetch + process + report in one command
+- [ ] `.env` for credentials: `IMAP_HOST`, `IMAP_USER`, `IMAP_APP_PASSWORD` (add `.env` to `.gitignore`!)
+- [ ] Gmail setup notes: 2FA → App Password → `imap.gmail.com`
+- [ ] Works with any IMAP provider (Outlook, Yahoo, …) = one adapter covers all
+
+> **Rule:** if this isn't working 24h before the deadline, cut it from the post.
+> A working export-based tool beats a broken login flow. MVP is what ships.
+
+## Definition of done
+
+- [ ] Runs offline: `python main.py` on a folder of `.eml` → `tracker.csv` + report
+- [ ] (Phase 6, only if shipped) `--sync` pulls new mail over IMAP, secrets in `.env`, never in git
+- [ ] No file over ~60 lines, services have zero I/O
+- [ ] You can explain every file in one sentence (for "How I Built It")
+
+## Scope guardrails (do NOT build unless ahead of schedule)
+
+- ✅ MVP: sort, track, nudge, report, simple dashboard
+- ⚠️ Gmail API direct sync (OAuth, Google Cloud project — scope creep; use IMAP instead, Phase 6)
+- ❌ Draft replies, calendar export, stats dashboard
+- ❌ Database, web server, auth
+
+> If a feature needs a new dependency or talks to the internet: skip it.

@@ -1,0 +1,91 @@
+# Build Plan — 10 Small Steps (GitHub Issues)
+
+Each step = one issue, one file focus, ~1–2 hours, **testable on its own**.
+Do them in order. Check off when done.
+
+---
+
+## Issue 1: Project skeleton + shared contract
+**Files:** `core/models.py`, `core/ports.py`, empty folders
+**Done when:** `python -c "from core.models import EmailRecord"` runs clean.
+
+- Create folder structure (core, adapters, services, prompts, inbox, ui)
+- Define `EmailRecord` dataclass (id, from_addr, subject, date, body, label, company, role, status)
+- Define `Classifier` + `Store` protocols
+
+## Issue 2: Parse 3 real .eml files
+**Files:** `adapters/eml_parser.py`
+**Done when:** `python adapters/eml_parser.py` prints subject/sender/date for 3 emails dropped in `inbox/`.
+
+- Read `.eml` with stdlib `email`
+- Extract plain-text body (strip HTML), truncate to ~1000 chars
+- Malformed email → log + skip, never crash
+
+## Issue 3: Classify one email with Ollama
+**Files:** `adapters/ollama_client.py`, `prompts/classify.txt`
+**Done when:** one email in → `{"label": "...", "company": "...", "role": "..."}` out.
+
+- HTTP call to `localhost:11434/api/generate`
+- Prompt asks for strict JSON (labels: applied, recruiter, interview, rejected, offer, followup, noise)
+- Ollama down → clear error: "is `ollama serve` running?"
+
+## Issue 4: Batch classify + dedup + retry
+**Files:** `services/classify.py`
+**Done when:** `inbox/` with 5 emails → 5 labeled records; re-run → 0 duplicates.
+
+- Loop over parsed records, collect labels
+- Invalid JSON from model → retry once → fallback label `noise`
+- Dedup on message-id hash
+
+## Issue 5: Track — write tracker.csv
+**Files:** `services/track.py`, `adapters/csv_store.py`
+**Done when:** 5 labeled records → `tracker.csv`; run twice → same rows, no dupes.
+
+- Merge: one row per company+role, newest date wins
+- Status transitions: applied → interviewing → rejected | offer
+- Plain `assert` self-check with fixed dates
+
+## Issue 6: Nudge — follow-up flags
+**Files:** `services/nudge.py`
+**Done when:** fixed "today" + 9-day-old application → flagged; fresh application → not flagged.
+
+- Rule: status `applied` and no reply in N days (default 7) → needs attention
+- Pure function, `assert` self-check, zero I/O
+
+## Issue 7: Wire it — main.py + report
+**Files:** `main.py`
+**Done when:** `python main.py` on `inbox/` → prints daily report + updates `tracker.csv`.
+
+- Wire: parse → classify → track → nudge → print
+- ~30 lines, no logic, only orchestration
+- `--since` flag to skip re-classifying already-processed emails
+
+## Issue 8: Dashboard UI
+**Files:** `ui/index.html`, `ui/app.ts`
+**Done when:** open in browser → table of applications + status filter + "needs follow-up" badge.
+
+- `fetch('tracker.csv')` → render table (no server, open file directly)
+- Filters: by status; highlight nudges
+- Take screenshot for the DEV post
+
+## Issue 9: Repo + README + push
+**Files:** `github.com/naheel0/job-mail-tracker`
+**Done when:** public repo with code, README, `.gitignore` (incl. `.env`), no secrets.
+
+- `git init` → push to GitHub
+- README with demo screenshot + run instructions
+- Verify: clone fresh → runs (no hidden local files)
+
+## Issue 10: Write + publish DEV post
+**Files:** DEV draft with template
+**Done when:** published with `#devchallenge` `#hf26challenge` + repo link + screenshot.
+
+- Use the challenge submission template
+- Sections: What I Built / Demo / Code / How I Built It / Why Open Innovation Matters
+- Record agent session (DevRelay) if possible — optional but judges like it
+- Share for reactions (tie-breaker)
+
+---
+
+**Buffer:** Issues 1–8 = build. Issue 9 = Day 3 morning. Issue 10 = Day 3 afternoon, **publish before Oct 31 11:59 PM PDT.**
+**Optional (only after issue 8):** Issue 11 — IMAP `--sync` adapter (see PLAN.md Phase 6).

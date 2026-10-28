@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+.inbox/
+inbox/*.eml
+inbox/*.mbox
+.sync_state
