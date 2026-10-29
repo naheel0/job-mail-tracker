@@ -60,9 +60,14 @@ def _publish(records, state) -> list[dict]:
             rec.label, rec.company, rec.role = cached["label"], cached["company"], cached["role"]
     rows = merge(load(), records)
     save(rows)
+    # inbox view: every parsed mail (no bodies) for the 'unfiltered' filter
+    mails = [{"from": r.from_addr, "subject": r.subject, "date": r.date, "label": r.label,
+              "company": r.company}
+             for r in sorted(records, key=lambda r: r.date, reverse=True)]
     # ponytail: data.js instead of fetch(tracker.csv) - file:// blocks fetch, double-click must work
     atomic_write(ROOT / "ui" / "data.js",
-                 "window.TRACKER_DATA = " + json.dumps(rows, indent=1) + ";\n")
+                 "window.TRACKER_DATA = " + json.dumps(rows, indent=1) + ";\n"
+                 + "window.MAIL_DATA = " + json.dumps(mails, indent=1) + ";\n")
     return rows
 
 
