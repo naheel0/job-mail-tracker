@@ -57,7 +57,11 @@ def merge(existing: list[dict], records: list[EmailRecord]) -> list[dict]:
             row["status"] = status
     for row in rows.values():
         row.setdefault("email", "")  # rows from an old CSV (pre-email column)
-    return sorted(rows.values(), key=_key)
+    # inbox order: most recent send/receive first (date+time, ISO = true
+    # chronological string order); rows with no date sink to the bottom.
+    # "" sorts smallest, so reverse=True puts empty dates last.
+    return sorted(rows.values(), key=lambda r: r.get("last_contact") or "",
+                  reverse=True)
 
 
 def _self_check() -> None:
@@ -97,7 +101,14 @@ def _self_check() -> None:
                 [mail("9", "Indeed", "Dev", "promo", "2026-10-06")])
     assert out[0]["status"] == "applied", out               # real status kept
     assert out[0]["last_contact"] == "2026-10-01", out      # date NOT reset by promo
-    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip) passed")
+
+    # inbox order: newest last_contact first, no-date rows last
+    out = merge([{"company": "Empty", "role": "", "status": "",
+                  "last_contact": "", "email": ""}],
+                [mail("10", "Old Co", "Dev", "applied", "2026-09-01"),
+                 mail("11", "New Co", "Dev", "applied", "2026-10-20")])
+    assert [r["company"] for r in out] == ["New Co", "Old Co", "Empty"], out
+    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip, inbox-order) passed")
 
 
 if __name__ == "__main__":
