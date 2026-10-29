@@ -5,11 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Job Mail Tracker</title>
 <style>
-  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --text:#e6e9ef; --dim:#8b93a5;
-          --applied:#3b82f6; --interviewing:#a855f7; --rejected:#ef4444; --offer:#22c55e; --nudge:#f59e0b; }
+  :root { color-scheme: dark;  /* native select/caret/scrollbar render dark too */
+          --bg:#0f1115; --card:#171a21; --line:#262b36; --text:#e6e9ef; --dim:#8b93a5;
+          --hover:#1c202a; --ring:#93c5fd; --link:#60a5fa; --slate:#374151;
+          /* badge fills tuned so label text passes AA 4.5:1 */
+          --applied:#2563eb; --interviewing:#9333ea; --rejected:#dc2626; --offer:#22c55e;
+          --nudge:#f59e0b; --recruiter:#0369a1; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text);
          font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; padding:32px 24px; }
+  @media (max-width:480px) { body { padding:20px 12px; } }
+  ::selection { background:var(--applied); color:#fff; }
+  :focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
+  html { scrollbar-color:var(--line) var(--bg); scrollbar-width:thin; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:var(--line); border-radius:8px; border:2px solid var(--bg); }
+  ::-webkit-scrollbar-track { background:var(--bg); }
   .wrap { max-width:960px; margin:0 auto; }
   h1 { margin:0 0 4px; font-size:24px; }
   #summary { color:var(--dim); margin:0 0 20px; }
@@ -19,23 +30,27 @@
   button:hover:not(:disabled) { border-color:var(--dim); }
   button.on { background:var(--text); color:var(--bg); border-color:var(--text); }
   button:disabled { opacity:.35; cursor:default; }
-  table { width:100%; border-collapse:collapse; background:var(--card);
-          border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-  th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+  /* wrapper owns chrome + horizontal pan: wide tables scroll instead of breaking small screens */
+  .table-wrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+  table { width:100%; min-width:600px; border-collapse:collapse; }
+  th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line);
+           font-variant-numeric:tabular-nums; overflow-wrap:break-word; }
+  td.contact { overflow-wrap:anywhere; }  /* emails are the only unbroken long tokens */
+  td.date { white-space:nowrap; }   /* dates and waiting days stay whole - never 2026-/10-22 */
   th { color:var(--dim); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+  tbody tr:hover td { background:var(--hover); }   /* scan across a wide row */
   tr:last-child td { border-bottom:none; }
-  a { color:var(--applied); text-decoration:none; }
-  a:hover { text-decoration:underline; }
+  a { color:var(--link); text-decoration:none; }
+  a:hover { text-decoration:underline; text-underline-offset:2px; }
   .badge { font-size:12px; padding:2px 10px; border-radius:99px; color:#fff; white-space:nowrap; }
   .s-applied        { background:var(--applied); }
   .s-interviewing   { background:var(--interviewing); }
   .s-rejected       { background:var(--rejected); }
-  .s-offer          { background:var(--offer); }
+  .s-offer          { background:var(--offer); color:#052e16; }  /* dark text: white fails on green */
   .s-unclassified   { background:#4b5563; }
-  .s-promo          { background:#374151; color:#9ca3af; }
-  .s-recruiter      { background:#0ea5e9; }
-  .s-noise, .s-followup { background:#374151; color:#9ca3af; }
-  .dir           { margin-right:5px; }
+  .s-promo, .s-noise, .s-followup { background:var(--slate); color:#d1d5db; }
+  .s-recruiter      { background:var(--recruiter); }
+  .s-sent           { background:#1f2430; color:#c9d1e0; border:1px solid #3b4252; margin-right:6px; }
   .nudge { margin-left:8px; background:var(--nudge); color:#1a1200; }
   .stale { color:var(--nudge); }
   .empty { padding:24px; color:var(--dim); text-align:center; }
@@ -51,16 +66,18 @@
 <body>
 <div class="wrap">
   <h1>Job Mail Tracker</h1>
-  <p id="summary">loading…</p>
+  <p id="summary" aria-live="polite" aria-atomic="true">loading…</p>
   <div id="filters"></div>
-  <table>
-    <thead><tr><th>Company</th><th>Role</th><th>Contact</th><th>Status</th><th>Last contact</th><th>Waiting</th></tr></thead>
-    <tbody id="rows"></tbody>
-  </table>
-  <div id="empty" class="empty" hidden></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Company</th><th scope="col">Role</th><th scope="col">Contact</th><th scope="col">Status</th><th scope="col">Last contact</th><th scope="col">Waiting</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div id="empty" class="empty" role="status" hidden></div>
   <div id="pager"></div>
   <p style="color:var(--dim);font-size:13px;text-align:center;margin-top:24px">
-    Processed 100% locally with open-source AI (Ollama) — your mail never leaves this machine.
+    Processed 100% locally with open-source AI — your mail never leaves this machine.
   </p>
 </div>
 
@@ -76,7 +93,7 @@ const today = new Date();
 let DATA = window.TRACKER_DATA || [];
 let MAIL = window.MAIL_DATA;           // undefined = data.js written by an older run
 let filter = "all", page = 1, pageSize = 25;
-const INBOX_HEAD = `<tr><th>From</th><th>Subject</th><th>Date</th><th>Label</th></tr>`;
+const INBOX_HEAD = `<tr><th scope="col">From</th><th scope="col">Subject</th><th scope="col">Date</th><th scope="col">Label</th></tr>`;
 const TRACKER_HEAD = document.querySelector("thead").innerHTML;
 
 const days = r => {
@@ -105,10 +122,10 @@ function rowHTML(r) {
   return `<tr>
       <td>${esc(r.company) || "?"}</td>
       <td>${esc(r.role) || "-"}</td>
-      <td>${r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : "-"}</td>
+      <td class="contact">${r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : "-"}</td>
       <td><span class="badge s-${status}">${status}</span>${
         isNudge(r) ? '<span class="badge nudge">follow up</span>' : ""}</td>
-      <td>${esc((r.last_contact || "").slice(0, 10)) || "-"}</td>
+      <td class="date">${esc((r.last_contact || "").slice(0, 10)) || "-"}</td>
       <td class="${isNudge(r) ? "stale" : ""}">${days(r) === null ? "-" : days(r) + "d"}</td>
     </tr>`;
 }
@@ -118,7 +135,7 @@ function renderFilters() {
     const n = f === "unfiltered" ? (MAIL || []).length
         : f === "all" ? DATA.filter(r => !isPromo(r)).length : f === "followup"
         ? DATA.filter(isNudge).length : DATA.filter(r => (r.status || "") === f).length;
-    return `<button data-f="${f}" class="${f === filter ? "on" : ""}"
+    return `<button data-f="${f}" class="${f === filter ? "on" : ""}" aria-pressed="${f === filter}"
                     onclick="setFilter('${f}')">${f} (${n})</button>`;
   }).join("");
 }
@@ -133,12 +150,13 @@ function renderPager(total, pages) {
   let nums = "", prev = 0;
   for (const p of win) {
     if (p - prev > 1) nums += "<span>…</span>";
-    nums += `<button class="num ${p === page ? "on" : ""}" onclick="setPage(${p})">${p}</button>`;
+    nums += `<button class="num ${p === page ? "on" : ""}" ${p === page ? 'aria-current="page"' : ""}
+                     onclick="setPage(${p})">${p}</button>`;
     prev = p;
   }
   document.getElementById("pager").innerHTML =
     `<span id="range">${from}–${to} of ${total}</span>
-     <select id="pageSize" onchange="setSize(this.value)">
+     <select id="pageSize" aria-label="Rows per page" onchange="setSize(this.value)">
        ${[10, 25, 50, 100].map(n => `<option ${n === pageSize ? "selected" : ""}>${n}</option>`).join("")}
      </select>
      <button ${page === 1 ? "disabled" : ""} onclick="setPage(${page - 1})">‹ prev</button>
@@ -172,7 +190,11 @@ function render() {
 }
 
 const setFilter = f => { filter = f; page = 1; render(); };
-const setPage  = p => { page = p; render(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+const setPage  = p => {
+  page = p; render();
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+};
 const setSize  = n => { pageSize = +n; page = 1; render(); };
 
 // --- unfiltered = inbox mode: every parsed mail, Gmail-style ---
@@ -185,10 +207,10 @@ function mailHTML(m) {
   const sent = m.dir === "sent";
   const addr = sent ? m.to : m.from;  // sent mail: the correspondent is who matters
   return `<tr>
-      <td>${sent ? `<span class="dir" title="sent by you">📤</span>` : ""}${
+      <td class="contact">${sent ? `<span class="badge s-sent">sent</span>` : ""}${
         addr ? `<a href="mailto:${esc(addr)}">${esc(addr)}</a>` : "-"}</td>
       <td>${esc(m.subject) || "-"}</td>
-      <td>${esc((m.date || "").slice(0, 10)) || "-"}</td>
+      <td class="date">${esc((m.date || "").slice(0, 10)) || "-"}</td>
       <td><span class="badge s-${cls}">${esc(label)}</span></td>
     </tr>`;
 }
