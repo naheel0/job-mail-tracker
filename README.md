@@ -23,7 +23,7 @@ python main.py              # parse -> classify (local model) -> tracker.csv -> 
 python main.py --sync       # optional: pull new mail over IMAP first (needs .env, see below)
 ```
 
-Open `ui/index.html` (double-click) for the dashboard: status filters, follow-up badges, waiting days, a `promo` filter for platform job alerts (hidden from the main list by default), and an `unfiltered` view showing every mail inbox-style (From / Subject / Date / Label) — sent mail included, marked 📤.
+Open `ui/index.html` (double-click) for the dashboard: status filters, follow-up badges, waiting days, a `promo` filter for platform job alerts (hidden from the main list by default), an `unfiltered` view showing every mail inbox-style (From / Subject / Date / Label), and a `sent` view listing only mail you sent — newest activity first, like a real inbox.
 
 **IMAP sync (optional)** — create `.env` (gitignored):
 
