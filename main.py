@@ -78,8 +78,8 @@ def _publish(records, state) -> list[dict]:
     rows = merge(load(), records)
     save(rows)
     # inbox view: every parsed mail (no bodies) for the 'unfiltered' filter
-    mails = [{"from": r.from_addr, "subject": r.subject, "date": r.date, "label": r.label,
-              "company": r.company}
+    mails = [{"from": r.from_addr, "to": r.to_addr, "subject": r.subject, "date": r.date,
+              "label": r.label, "company": r.company, "dir": r.direction}
              for r in sorted(records, key=lambda r: r.date, reverse=True)]
     # ponytail: data.js instead of fetch(tracker.csv) - file:// blocks fetch, double-click must work
     atomic_write(ROOT / "ui" / "data.js",
@@ -94,7 +94,7 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
         print(f"Syncing IMAP -> {folder}/ ...")
         print(f"Fetched {sync(folder)} new email(s) (deduped by Message-ID).")
 
-    records = parse_dir(folder)
+    records = parse_dir(folder) + parse_dir(ROOT / "sent", "sent")  # sent/ may not exist yet
     if not records:
         print(f"No .eml files found in {folder}/")
         return

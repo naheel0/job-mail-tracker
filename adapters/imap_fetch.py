@@ -28,6 +28,8 @@ sys.path.insert(0, str(ROOT))
 
 SYNC_DAYS = int(os.environ.get("IMAP_SINCE_DAYS", "30"))  # ponytail: first sync window
 STATE_FILE = ROOT / ".sync_state"
+SENT_DIR = ROOT / "sent"  # sent mail lives apart: dir name = direction
+SENT_CANDIDATES = ("[Gmail]/Sent Mail", "Sent", "Sent Items", "INBOX.Sent")  # IMAP_SENT_FOLDER overrides
 
 
 def _env(name: str) -> str:
@@ -76,8 +78,24 @@ def _save(raw: bytes, folder: Path) -> bool:
     return True
 
 
+def _pull(imap, remote: str, dest: Path, since: date, strict: bool) -> int:
+    """Fetch messages since `since` from remote folder into dest. False-start guard: a failed
+    INBOX search aborts (state not advanced); a failed Sent search just skips Sent."""
+    typ, found = imap.search(None, "SINCE", since.strftime("%d-%b-%Y"))
+    if typ != "OK":  # otherwise we'd write today's date and silently skip these forever
+        if strict:
+            raise SystemExit(f"IMAP search failed ({found}) - not advancing sync state, retry later.")
+        return 0
+    new = 0
+    for num in found[0].split():
+        _, data = imap.fetch(num, "(RFC822)")
+        if data and isinstance(data[0], tuple) and _save(data[0][1], dest):
+            new += 1
+    return new
+
+
 def sync(folder: Path, days: int | None = None) -> int:
-    """Download emails since the last sync into folder. Returns count of new files."""
+    """Download emails since the last sync: INBOX -> folder, Sent -> sent/. Returns new count."""
     host, user, pw = _cfg()
     since = _since()
     try:
@@ -100,14 +118,18 @@ def sync(folder: Path, days: int | None = None) -> int:
                 "  4. spaces in the app password are fine, quotes optional"
             ) from exc
         imap.select("INBOX")
-        typ, found = imap.search(None, "SINCE", since.strftime("%d-%b-%Y"))
-        if typ != "OK":  # otherwise we'd write today's date and silently skip these forever
-            raise SystemExit(f"IMAP search failed ({found}) - not advancing sync state, retry later.")
-        new = 0
-        for num in found[0].split():
-            _, data = imap.fetch(num, "(RFC822)")
-            if data and isinstance(data[0], tuple) and _save(data[0][1], folder):
-                new += 1
+        new = _pull(imap, "INBOX", folder, since, strict=True)
+        override = _env("IMAP_SENT_FOLDER")
+        for name in ((override,) if override else SENT_CANDIDATES):
+            if imap.select(name)[0] != "OK":
+                continue  # provider names its sent folder differently - try the next one
+            n = _pull(imap, name, SENT_DIR, since, strict=False)
+            print(f"  sent folder {name!r}: {n} new email(s)", flush=True)
+            new += n
+            break
+        else:
+            print(f"  sent folder not found (tried {override or ', '.join(SENT_CANDIDATES)}) - "
+                  f"syncing inbox only. Set IMAP_SENT_FOLDER in .env to fix.", flush=True)
     finally:
         imap.logout()
     STATE_FILE.write_text(date.today().isoformat(), encoding="utf-8")

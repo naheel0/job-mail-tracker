@@ -25,10 +25,20 @@ Platform rules (Indeed, Naukri, LinkedIn, Glassdoor, Shine, TimesJobs, foundit):
   that Company), NEVER the platform name. Only use the platform name as company
   if no employer is stated anywhere.
 
+Sent-mail rules (Direction: sent - the From is the USER, the correspondent is the To side):
+- company/role come from the TO side: the recipient's organization, or the employer
+  named in the subject/body. Never the user's own name or email domain.
+- The user sending an application or CV -> "applied". The user answering an
+  interview/recruiter thread -> "interview" / "recruiter" as the thread shows.
+  The user chasing a reply ("following up", "Re: application") -> "followup".
+  Personal mail to friends/family -> "noise", company null.
+
 Extract company and role only when clearly present. Lowercase values. Null otherwise.
 
 Email:
+Direction: {direction}
 From: {sender}
+To: {to}
 Subject: {subject}
 Date: {date}
 Body:

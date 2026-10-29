@@ -35,6 +35,7 @@
   .s-promo          { background:#374151; color:#9ca3af; }
   .s-recruiter      { background:#0ea5e9; }
   .s-noise, .s-followup { background:#374151; color:#9ca3af; }
+  .dir           { margin-right:5px; }
   .nudge { margin-left:8px; background:var(--nudge); color:#1a1200; }
   .stale { color:var(--nudge); }
   .empty { padding:24px; color:var(--dim); text-align:center; }
@@ -181,8 +182,11 @@ function mailHTML(m) {
   const label = m.label || "unclassified";
   const cls = LABEL_CLASS[label] || (["applied", "rejected", "offer"].includes(label)
                                      ? label : "unclassified");
+  const sent = m.dir === "sent";
+  const addr = sent ? m.to : m.from;  // sent mail: the correspondent is who matters
   return `<tr>
-      <td>${m.from ? `<a href="mailto:${esc(m.from)}">${esc(m.from)}</a>` : "-"}</td>
+      <td>${sent ? `<span class="dir" title="sent by you">📤</span>` : ""}${
+        addr ? `<a href="mailto:${esc(addr)}">${esc(addr)}</a>` : "-"}</td>
       <td>${esc(m.subject) || "-"}</td>
       <td>${esc((m.date || "").slice(0, 10)) || "-"}</td>
       <td><span class="badge s-${cls}">${esc(label)}</span></td>
@@ -200,8 +204,9 @@ function renderInbox() {
   empty.hidden = mails.length > 0;
   empty.textContent = MAIL ? "No mail yet - run: python main.py"
                            : "Mail list missing - run: python main.py to regenerate data.js";
+  const sentN = mails.filter(m => m.dir === "sent").length;
   document.getElementById("summary").textContent =
-    `${mails.length} mails · ${mails.filter(m => !m.label).length} not yet classified · ` +
+    `${mails.length} mails (${sentN} sent) · ${mails.filter(m => !m.label).length} not yet classified · ` +
     `unfiltered view (everything) · last run ${new Date().toLocaleDateString()}`;
   renderPager(mails.length, pages);
   history.replaceState(null, "", `#${filter}/${page}`);

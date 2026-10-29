@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .env
 inbox/
+sent/
 .sync_state
 .state.json
 tracker.csv

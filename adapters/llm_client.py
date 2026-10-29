@@ -92,7 +92,8 @@ def classify(record: EmailRecord) -> EmailRecord:
     hint = ""
     answer: dict = {}
     for _ in range(2):  # providers guarantee JSON-ish text, not shape - we check shape here
-        answer = _generate(PROMPT.format(sender=record.from_addr, subject=record.subject,
+        answer = _generate(PROMPT.format(direction=record.direction, sender=record.from_addr,
+                                         to=record.to_addr, subject=record.subject,
                                          date=record.date, body=record.body) + hint)
         if _label_of(answer):
             break

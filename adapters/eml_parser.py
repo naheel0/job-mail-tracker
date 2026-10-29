@@ -67,13 +67,14 @@ def parse_file(path: Path) -> EmailRecord:
     return EmailRecord(
         id=hashlib.sha256(message_id.encode()).hexdigest()[:16],
         from_addr=decode(msg.get("From")),
+        to_addr=decode(msg.get("To")),
         subject=decode(msg.get("Subject")),
         date=_date_iso(msg),
         body=_plain_body(msg),
     )
 
 
-def parse_dir(folder: Path) -> list[EmailRecord]:
+def parse_dir(folder: Path, direction: str = "inbox") -> list[EmailRecord]:
     """Parse every *.eml in folder. Bad files are logged and skipped, batch continues."""
     records, seen = [], set()
     for path in sorted(folder.glob("*.eml")):
@@ -84,6 +85,7 @@ def parse_dir(folder: Path) -> list[EmailRecord]:
             continue
         if rec.id not in seen:
             seen.add(rec.id)
+            rec.direction = direction
             records.append(rec)
     return records
 
@@ -105,8 +107,10 @@ Hi! We would like to schedule an interview.
         assert rec.subject == "Interview invite - Backend Developer", rec.subject
         assert "schedule an interview" in rec.body
         assert rec.date.startswith("2026-10-27"), rec.date
+        assert rec.to_addr == "me@mail.com", rec.to_addr
         assert len(rec.id) == 16
         assert parse_dir(Path("."))  # sample file picked up from dir
+        assert parse_dir(Path("."), "sent")[0].direction == "sent"  # direction sticks
     finally:
         p.unlink()
     print("OK: parser self-check passed")

@@ -19,6 +19,8 @@ class EmailRecord:
     subject: str
     date: str               # ISO 8601
     body: str               # plain text, truncated
+    to_addr: str = ""       # recipient — for sent mail this is the correspondent
+    direction: str = "inbox"  # "inbox" (received) or "sent" (written by the user)
     label: str = ""         # one of LABELS (filled by classify)
     company: str | None = None
     role: str | None = None
