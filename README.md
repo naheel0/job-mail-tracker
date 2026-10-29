@@ -6,7 +6,7 @@ Local-first email assistant for job hunters. Reads an exported inbox (`.eml` fil
 
 ## What it does
 
-1. **Sort** — labels each email: application confirmation, recruiter outreach, interview invite, rejection, offer, follow-up, noise
+1. **Sort** — labels each email: application confirmation, recruiter outreach, interview invite, rejection, offer, follow-up, platform promo (job alerts/digests — hidden by default in the dashboard), noise
 2. **Track** — maintains `tracker.csv`: company, role, status, last contact date
 3. **Nudge** — flags applications with no reply after N days
 4. **(Optional) Sync** — `--sync` pulls new mail over IMAP (any provider) straight into `inbox/`, no manual export
@@ -23,7 +23,7 @@ python main.py              # parse -> classify (local model) -> tracker.csv -> 
 python main.py --sync       # optional: pull new mail over IMAP first (needs .env, see below)
 ```
 
-Open `ui/index.html` (double-click) for the dashboard: status filters, follow-up badges, waiting days.
+Open `ui/index.html` (double-click) for the dashboard: status filters, follow-up badges, waiting days, and a `promo` filter for platform job alerts (hidden from the main list by default).
 
 **IMAP sync (optional)** — create `.env` (gitignored):
 
