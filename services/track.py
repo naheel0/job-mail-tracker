@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 
 from core.models import EmailRecord
-from email.utils import parseaddr
+from email.utils import getaddresses
 
 # label -> status (None = no status change, e.g. followups and newsletters)
 STATUS_BY_LABEL = {
@@ -52,7 +52,12 @@ def merge(existing: list[dict], records: list[EmailRecord]) -> list[dict]:
             # promo keeps its own arrival date only on a fresh row - it never
             # resets the silence clock of a real application
             row["last_contact"] = rec.date
-            row["email"] = parseaddr(rec.from_addr)[1] or row.get("email", "")
+            # contact = the other party: sent mail -> recipient, received -> sender
+            peer = rec.to_addr if rec.direction == "sent" else rec.from_addr
+            # getaddresses (list form): multi-recipient To: "a@x, b@x" yields the
+            # first address - parseaddr is strict in py3.13+ and returns "" there
+            got = getaddresses([peer])
+            row["email"] = (got[0][1] if got else "") or row.get("email", "")
         if status and RANK[status] >= RANK.get(row["status"], 0):  # never move backwards
             row["status"] = status
     for row in rows.values():
@@ -108,7 +113,18 @@ def _self_check() -> None:
                 [mail("10", "Old Co", "Dev", "applied", "2026-09-01"),
                  mail("11", "New Co", "Dev", "applied", "2026-10-20")])
     assert [r["company"] for r in out] == ["New Co", "Old Co", "Empty"], out
-    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip, inbox-order) passed")
+
+    # contact = correspondent: a sent mail overwrites the row's own address
+    # with the recipient (to:), never leaving the user's address behind -
+    # including multi-recipient To: headers (py3.13+ strict parseaddr returns "")
+    sent = EmailRecord("14", "me@gmail.com", "s", "2026-10-09", "b",
+                       to_addr="hr@acme.com, talent@acme.com", direction="sent",
+                       label="applied", company="Acme", role="Dev")
+    out = merge([{"company": "Acme", "role": "Dev", "status": "applied",
+                  "last_contact": "2026-10-08", "email": "me@gmail.com"}],
+                [mail("13", "Acme", "Dev", "followup", "2026-10-08"), sent])
+    assert out[0]["email"] == "hr@acme.com", out
+    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip, inbox-order, contact) passed")
 
 
 if __name__ == "__main__":

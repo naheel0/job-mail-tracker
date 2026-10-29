@@ -56,7 +56,9 @@
   .s-unclassified   { background:#4b5563; }
   .s-promo, .s-noise, .s-followup { background:var(--slate); color:#d1d5db; }
   .s-recruiter      { background:var(--recruiter); }
-  .s-sent           { background:#1f2430; color:#c9d1e0; border:1px solid #3b4252; margin-right:6px; }
+  .s-sent, .s-received { background:#1f2430; border:1px solid #3b4252; white-space:nowrap; }
+  .s-sent     { color:#c9d1e0; }
+  .s-received { color:#9ca3af; }
   .nudge { margin-left:8px; background:var(--nudge); color:#1a1200; }
   .stale { color:var(--nudge); }
   .empty { padding:24px; color:var(--dim); text-align:center; }
@@ -100,7 +102,7 @@ const today = new Date();
 let DATA = window.TRACKER_DATA || [];
 let MAIL = window.MAIL_DATA;           // undefined = data.js written by an older run
 let filter = "all", page = 1, pageSize = 25;
-const INBOX_HEAD = `<tr><th scope="col">From</th><th scope="col">Subject</th><th scope="col">Date</th><th scope="col">Label</th></tr>`;
+const INBOX_HEAD = `<tr><th scope="col">Direction</th><th scope="col">Contact</th><th scope="col">Subject</th><th scope="col">Date</th><th scope="col">Label</th></tr>`;
 const TRACKER_HEAD = document.querySelector("thead").innerHTML;
 
 const days = r => {
@@ -215,7 +217,8 @@ function mailHTML(m) {
   const sent = m.dir === "sent";
   const addr = sent ? m.to : m.from;  // sent mail: the correspondent is who matters
   return `<tr>
-      <td class="contact">${sent ? `<span class="badge s-sent">sent</span>` : ""}${
+      <td><span class="badge ${sent ? "s-sent" : "s-received"}">${sent ? "sent" : "received"}</span></td>
+      <td class="contact">${
         addr ? `<a href="mailto:${esc(addr)}">${esc(addr)}</a>` : "-"}</td>
       <td>${esc(m.subject) || "-"}</td>
       <td class="date">${esc((m.date || "").slice(0, 10)) || "-"}</td>
