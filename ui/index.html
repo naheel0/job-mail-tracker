@@ -127,7 +127,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function rowHTML(r) {
-  const status = esc(r.status || "unclassified");
+  // status "" = followup-only thread (AI labeled it, no funnel stage yet) - not "unclassified"
+  const status = esc(r.status || "followup");
   // dir = direction of the mail that last touched this row ("" on rows from an old CSV)
   const dir = r.dir === "sent" ? "sent" : r.dir ? "received" : "";
   return `<tr>

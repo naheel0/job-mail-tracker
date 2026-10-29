@@ -10,6 +10,7 @@ Run:  python services/track.py    (self-check with fixed dates)
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -32,14 +33,29 @@ STATUS_BY_LABEL = {
 RANK = {"": 0, "applied": 1, "interviewing": 2, "rejected": 3, "offer": 4, "promo": 0}
 
 
+def _canon(s: str) -> str:
+    """Group string variants of one thread: glarustech.com == GlarusTech == "glarus tech",
+    .net developer == "net developer" == aspnet. Keeps genuinely different names apart
+    (foo != fooindustries) - no fuzzy matching, only case/punctuation/domain noise."""
+    s = re.sub(r"\.(com|in|io|co|net|org)$", "", (s or "").strip().lower())
+    return re.sub(r"[^a-z0-9]", "", s)
+
+
 def _key(row: dict) -> tuple[str, str]:
     # .get guards corrupt CSV rows (company=None would crash .lower())
-    return ((row.get("company") or "").strip().lower(),
-            (row.get("role") or "").strip().lower())
+    return (_canon(row.get("company")),
+            _canon(row.get("role")))
 
 
 def merge(existing: list[dict], records: list[EmailRecord]) -> list[dict]:
-    rows = {_key(r): dict(r) for r in existing}
+    # one canonical key may match several CSV rows (variant spellings): keep the
+    # newest by last_contact - position in file is NOT a safe tie-break.
+    rows: dict[tuple[str, str], dict] = {}
+    for r in existing:
+        k = _key(r)
+        cur = rows.get(k)
+        if cur is None or (r.get("last_contact") or "") > (cur.get("last_contact") or ""):
+            rows[k] = dict(r)
     for rec in sorted(records, key=lambda r: r.date):  # oldest first -> newest wins
         if not rec.company or rec.label == "noise":
             continue  # no company, or noise: nothing to track (promo handled below)
@@ -144,7 +160,25 @@ def _self_check() -> None:
                   "last_contact": "2026-10-06", "email": "a@b.c"}],
                 [mail("15", "Fresh", None, "promo", "2026-10-06")])
     assert out[0]["dir"] == "inbox" and out[0]["last_contact"] == "2026-10-06", out
-    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip, inbox-order, contact, dir) passed")
+    # canonical key: string variants of ONE thread collapse (case/domain/punctuation),
+    # and the merged row keeps the applied status + newest date from both sides
+    out = merge([], [mail("16", "GlarusTech.com", "ASP.NET Developer", "applied", "2026-10-02"),
+                     mail("17", "glarus tech", "asp net developer", "followup", "2026-10-09")])
+    assert len(out) == 1, out
+    assert out[0]["status"] == "applied" and out[0]["last_contact"] == "2026-10-09", out
+    # but genuinely different names / roles never merge (no fuzzy matching)
+    out = merge([], [mail("18", "Acme", "Dev", "applied", "2026-10-02"),
+                     mail("19", "Acme", "QA", "applied", "2026-10-03"),
+                     mail("20", "Acme Industries", "Dev", "applied", "2026-10-04")])
+    assert len(out) == 3, out
+    # canonical-key collision inside the CSV itself: newest last_contact wins,
+    # regardless of the row's position in the file
+    out = merge([{"company": "Old Variance", "role": "Dev", "status": "applied",
+                  "last_contact": "2026-10-01", "email": "a@b.c"},
+                 {"company": "old-variance", "role": "dev", "status": "interviewing",
+                  "last_contact": "2026-10-05", "email": "d@e.f"}], [])
+    assert len(out) == 1 and out[0]["last_contact"] == "2026-10-05", out
+    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip, inbox-order, contact, dir, canon-key) passed")
 
 
 if __name__ == "__main__":
