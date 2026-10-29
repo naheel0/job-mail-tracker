@@ -85,7 +85,7 @@
 <script>
 // ponytail: same nudge rule as services/nudge.py (>=7d + still 'applied') - keep in sync
 const NUDGE_DAYS = 7;
-const STATUSES = ["all", "unfiltered", "followup", "applied", "interviewing", "rejected", "offer", "promo"];
+const STATUSES = ["all", "unfiltered", "sent", "followup", "applied", "interviewing", "rejected", "offer", "promo"];
 const today = new Date();
 
 // EAGER load: data.js is one small in-memory file - lazy-loading it would only add a spinner.
@@ -133,6 +133,7 @@ function rowHTML(r) {
 function renderFilters() {
   document.getElementById("filters").innerHTML = STATUSES.map(f => {
     const n = f === "unfiltered" ? (MAIL || []).length
+        : f === "sent" ? (MAIL || []).filter(m => m.dir === "sent").length
         : f === "all" ? DATA.filter(r => !isPromo(r)).length : f === "followup"
         ? DATA.filter(isNudge).length : DATA.filter(r => (r.status || "") === f).length;
     return `<button data-f="${f}" class="${f === filter ? "on" : ""}" aria-pressed="${f === filter}"
@@ -165,7 +166,7 @@ function renderPager(total, pages) {
 }
 
 function render() {
-  if (filter === "unfiltered") return renderInbox();
+  if (filter === "unfiltered" || filter === "sent") return renderInbox();
   document.querySelector("thead").innerHTML = TRACKER_HEAD;  // undo an inbox-mode swap
   const rows = filtered();
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -217,19 +218,24 @@ function mailHTML(m) {
 
 function renderInbox() {
   document.querySelector("thead").innerHTML = INBOX_HEAD;
-  const mails = MAIL || [];
+  const all = MAIL || [];
+  const mails = filter === "sent" ? all.filter(m => m.dir === "sent") : all;
   const pages = Math.max(1, Math.ceil(mails.length / pageSize));
   if (page > pages) page = pages;
   const slice = mails.slice((page - 1) * pageSize, page * pageSize);  // lazy: only this page
   document.getElementById("rows").innerHTML = slice.map(mailHTML).join("");
   const empty = document.getElementById("empty");
   empty.hidden = mails.length > 0;
-  empty.textContent = MAIL ? "No mail yet - run: python main.py"
-                           : "Mail list missing - run: python main.py to regenerate data.js";
-  const sentN = mails.filter(m => m.dir === "sent").length;
+  empty.textContent = !MAIL ? "Mail list missing - run: python main.py to regenerate data.js"
+                       : filter === "sent" ? "No sent mail found."
+                       : "No mail yet - run: python main.py";
+  const sentN = all.filter(m => m.dir === "sent").length;
+  const view = filter === "sent" ? "sent mail only" : "unfiltered view (everything)";
   document.getElementById("summary").textContent =
-    `${mails.length} mails (${sentN} sent) · ${mails.filter(m => !m.label).length} not yet classified · ` +
-    `unfiltered view (everything) · last run ${new Date().toLocaleDateString()}`;
+    `${mails.length} mails${filter === "sent" ? "" : ` (${sentN} sent)`} · ` +
+    `${mails.filter(m => !m.label).length} not yet classified · ` +
+    `${view} · last run ${new Date().toLocaleDateString()}`;
+  renderFilters();   // pills must track the active view (inbox modes return early from render())
   renderPager(mails.length, pages);
   history.replaceState(null, "", `#${filter}/${page}`);
 }
