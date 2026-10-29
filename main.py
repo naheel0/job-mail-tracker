@@ -10,7 +10,7 @@ import json
 import os
 import sys
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -38,6 +38,9 @@ from services.nudge import needs_followup, waiting_days
 from services.track import merge
 
 STATE_FILE = ROOT / ".state.json"  # label cache: email id -> {label, company, role}
+
+# live LLM run state, published into ui/data.js so the dashboard can show AI progress
+AI_RUN = {"running": False, "done": 0, "total": 0, "ts": ""}
 
 
 def _load_state() -> dict:
@@ -82,9 +85,13 @@ def _publish(records, state) -> list[dict]:
               "label": r.label, "company": r.company, "dir": r.direction}
              for r in sorted(records, key=lambda r: r.date, reverse=True)]
     # ponytail: data.js instead of fetch(tracker.csv) - file:// blocks fetch, double-click must work
+    AI_RUN["ts"] = datetime.now().isoformat(timespec="seconds")  # freshness stamp for the UI
+    ai = {"total": len(records), "classified": sum(1 for r in records if r.id in state),
+          "model": MODEL, "run": dict(AI_RUN)}
     atomic_write(ROOT / "ui" / "data.js",
                  "window.TRACKER_DATA = " + json.dumps(rows, indent=1) + ";\n"
-                 + "window.MAIL_DATA = " + json.dumps(mails, indent=1) + ";\n")
+                 + "window.MAIL_DATA = " + json.dumps(mails, indent=1) + ";\n"
+                 + "window.AI_STATS = " + json.dumps(ai) + ";\n")
     return rows
 
 
@@ -104,6 +111,7 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
     done_count = 0
     if new:
         print(f"Classifying {len(new)} new email(s) with {MODEL}...", flush=True)
+        AI_RUN.update(running=True, done=0, total=len(new))
         clf = LLMClassifier()
         fails = 0
         try:
@@ -125,15 +133,18 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
                 state[done.id] = {"label": done.label, "company": done.company, "role": done.role}
                 if done_count % 10 == 0:
                     atomic_write(STATE_FILE, json.dumps(state, indent=1))
+                    AI_RUN["done"] = done_count
                     _publish(records, state)  # UI grows live
                     print(f"  {done_count}/{len(new)} classified", flush=True)
         except (KeyboardInterrupt, SystemExit) as exc:  # Ctrl+C or Ollama died: keep everything so far
             atomic_write(STATE_FILE, json.dumps(state, indent=1))
+            AI_RUN.update(running=False, done=done_count)
             _publish(records, state)
             print(f"\nStopped early ({done_count}/{len(new)} classified this run) - "
                   f"progress saved, dashboard updated. Re-run to continue.", file=sys.stderr)
             raise SystemExit(130 if isinstance(exc, KeyboardInterrupt) else str(exc) or 1)
         atomic_write(STATE_FILE, json.dumps(state, indent=1))
+        AI_RUN.update(running=False, done=done_count)  # run over: chip stops pulsing
 
     rows = _publish(records, state)
     print(f"Saved tracker.csv ({len(rows)} rows), processed {len(records)} email(s), "

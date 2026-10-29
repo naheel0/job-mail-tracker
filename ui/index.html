@@ -24,6 +24,12 @@
   .wrap { max-width:960px; margin:0 auto; }
   h1 { margin:0 0 4px; font-size:24px; }
   #summary { color:var(--dim); margin:0 0 20px; }
+  #ai { color:var(--dim); font-size:13px; margin:0 0 16px; }
+  #ai:empty { display:none; }   /* data.js without AI_STATS: no stray gap */
+  #ai .dot { display:inline-block; width:7px; height:7px; border-radius:50%;
+             background:var(--offer); margin-right:7px; animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  @media (prefers-reduced-motion: reduce) { #ai .dot { animation:none; } }
   #filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
   button { background:var(--card); color:var(--text); border:1px solid var(--line);
            border-radius:99px; padding:6px 14px; font-size:13px; cursor:pointer; font-family:inherit; }
@@ -67,6 +73,7 @@
 <div class="wrap">
   <h1>Job Mail Tracker</h1>
   <p id="summary" aria-live="polite" aria-atomic="true">loading…</p>
+  <p id="ai"></p>
   <div id="filters"></div>
   <div class="table-wrap">
     <table>
@@ -246,6 +253,22 @@ function renderInbox() {
   if (f && STATUSES.includes(f)) filter = f;
   if (+p > 0) page = +p;
   render();
+})();
+
+// --- AI status line: totals from AI_STATS + live LLM run state ---
+(() => {
+  const s = window.AI_STATS, el = document.getElementById("ai");
+  if (!s || !el) return;
+  const pct = s.total ? Math.round(100 * s.classified / s.total) : 0;
+  const run = s.run || {};
+  // live = run flagged active AND last publish < 10 min ago (a dead batch's chip expires, never lies)
+  const live = run.running && run.ts && Date.now() - Date.parse(run.ts) < 10 * 60 * 1000;
+  el.innerHTML = (live ? '<span class="dot" aria-hidden="true"></span>' : "") +
+    `AI (${esc(s.model)}): ${s.classified}/${s.total} classified (${pct}%) · ` +
+    `${s.total - s.classified} pending` +
+    (live ? ` · working ${run.done}/${run.total} this run` : "");
+  document.getElementById("summary").style.margin = "0 0 4px";  // line took over the gap
+  if (live) setTimeout(() => location.reload(), 60000);  // pick up the next publish; hash keeps view
 })();
 </script>
 </body>
