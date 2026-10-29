@@ -24,7 +24,7 @@ job-mail-tracker/
 ├── adapters/
 │   ├── eml_parser.py       # .eml → EmailRecord
 │   ├── imap_fetch.py       # (Phase 6) pull new mail → inbox/*.eml (stdlib imaplib)
-│   ├── ollama_client.py    # Classifier impl (swap → llama.cpp, OpenAI later)
+│   ├── llm_client.py        # Classifier impl: any OpenAI-compatible API (Ollama/LM Studio/Groq/...)
 │   └── csv_store.py        # Store impl (swap → SQLite later)
 ├── services/
 │   ├── classify.py         # loop + prompt orchestration
@@ -48,7 +48,7 @@ main.py → services → core (ports) ← adapters
 ```
 
 - Services depend only on **protocols** (`Classifier`, `Store`), never on concrete implementations.
-- Ollama lives only in `ollama_client.py`. Swapping the model = edit 1 file.
+- The LLM lives only in `llm_client.py` — one OpenAI-compatible client for local (Ollama, LM Studio) or cloud (Groq, OpenRouter, …). Swapping model/provider = env vars (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`), zero code.
 - `services/` contains zero I/O code — pure business rules, trivially testable.
 
 ### 2. Small files (< ~60 lines)
@@ -86,7 +86,7 @@ class EmailRecord:
 
 0. **Sync (optional, Phase 6)** — `imap_fetch.py` logs in over IMAP, downloads only emails since `.sync_state`, saves them as `inbox/*.eml`. Fetch is the only step that needs internet.
 1. **Parse** — `eml_parser.py` reads `inbox/*.eml` → `EmailRecord` (dedup by `id`)
-2. **Classify** — `ollama_client.py` sends subject+body to local model → label/company/role JSON
+2. **Classify** — `llm_client.py` sends subject+body to the configured LLM (local or cloud) → label/company/role JSON
 3. **Track** — `track.py` merges records into `tracker.csv`, keeps newest status per company+role
 4. **Nudge** — `nudge.py` compares `last contact` vs today → "needs attention" list
 5. **Report** — `main.py` prints the daily summary

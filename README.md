@@ -33,6 +33,15 @@ IMAP_USER=you@gmail.com
 IMAP_PASSWORD=your-app-password   # Gmail: 2-Step Verification -> App passwords
 ```
 
+Works with any **OpenAI-compatible endpoint** — local (Ollama, LM Studio, llama.cpp server) or
+cloud (Groq, OpenRouter, …). Defaults to local Ollama, so out of the box nothing leaves your machine:
+
+```powershell
+# examples - put in .env (or as env vars), then just run python main.py
+# LLM_BASE_URL=http://localhost:1234/v1                                    # LM Studio
+# LLM_BASE_URL=https://api.groq.com/openai/v1  LLM_MODEL=llama-3.1-8b-instant  LLM_API_KEY=gsk_...   # Groq
+```
+
 Works with any IMAP provider (Outlook, Yahoo, …). Each email is classified **once** —
 results cache in `.state.json`, so re-runs need no model and no internet.
 
@@ -41,12 +50,12 @@ results cache in `.state.json`, so re-runs need no model and no internet.
 - Works fully **offline** — no internet required
 - **Private** — job search data never leaves your machine
 - **Free to run** — no API costs
-- **Swappable** — change the model with one config value
+- **Swappable** — any open-weight model or provider, via config only (no code changes)
 
 ## Stack
 
 - Python 3.11+ (stdlib `email` for parsing)
-- [Ollama](https://ollama.com) with an open-weight model (llama 3.2 / mistral)
+- Any OpenAI-compatible LLM endpoint — defaults to [Ollama](https://ollama.com) with an open-weight model (llama 3.2)
 - CSV storage (no database)
 - HTML dashboard (no build step, no server)
 

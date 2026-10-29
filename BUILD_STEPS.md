@@ -21,8 +21,8 @@ Do them in order. Check off when done.
 - Extract plain-text body (strip HTML), truncate to ~1000 chars
 - Malformed email → log + skip, never crash
 
-## Issue 3: Classify one email with Ollama
-**Files:** `adapters/ollama_client.py`, `prompts/classify.txt`
+## Issue 3: Classify one email with an LLM
+**Files:** `adapters/llm_client.py`, `prompts/classify.txt`
 **Done when:** one email in → `{"label": "...", "company": "...", "role": "..."}` out.
 
 - HTTP call to `localhost:11434/api/generate`

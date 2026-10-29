@@ -1,11 +1,13 @@
 """Issue 7: the CLI. Wires parse -> classify -> track -> nudge -> report. No logic here.
 
 Run:  python main.py [folder]     (default: inbox/)
-Classified results are cached in .state.json, so re-runs need no Ollama and no internet.
+Classified results are cached in .state.json, so re-runs need no LLM and no internet.
+LLM endpoint/model: LLM_BASE_URL / LLM_MODEL / LLM_API_KEY env vars (any OpenAI-compatible API).
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections import Counter
 from datetime import date
@@ -14,9 +16,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
+
+def _load_dotenv() -> None:
+    """4-line .env loader: LLM_*/IMAP_* work from the file, not just the shell."""
+    env = ROOT / ".env"
+    if not env.exists():
+        return
+    for line in env.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, val = line.partition("=")
+            os.environ.setdefault(key.strip(), val.strip())  # real env vars win
+
+
+_load_dotenv()  # must run before the adapter import (it reads env at import time)
+
 from adapters.csv_store import atomic_write, load, save
 from adapters.eml_parser import parse_dir
-from adapters.ollama_client import OllamaClassifier
+from adapters.llm_client import LLMClassifier, MODEL
 from services.nudge import needs_followup, waiting_days
 from services.track import merge
 
@@ -86,8 +103,8 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
     new = [r for r in records if r.id not in state]
     done_count = 0
     if new:
-        print(f"Classifying {len(new)} new email(s) with Ollama...", flush=True)
-        clf = OllamaClassifier()
+        print(f"Classifying {len(new)} new email(s) with {MODEL}...", flush=True)
+        clf = LLMClassifier()
         fails = 0
         try:
             for rec in new:

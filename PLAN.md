@@ -14,7 +14,7 @@
 ### Phase 2 — The spine (Day 1–2)
 - [ ] `adapters/eml_parser.py` — `.eml` → `EmailRecord`
 - [ ] Export 3–5 real `.eml` files into `inbox/`, verify parse
-- [ ] `adapters/ollama_client.py` — classify 1 email end to end
+- [ ] `adapters/llm_client.py` — classify 1 email end to end
 - [ ] `prompts/classify.txt` — label/company/role → strict JSON
 - [ ] **Milestone: 1 email goes in → labeled record comes out**
 
