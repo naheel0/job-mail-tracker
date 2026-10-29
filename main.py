@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from adapters.csv_store import load, save
+from adapters.csv_store import atomic_write, load, save
 from adapters.eml_parser import parse_dir
 from adapters.ollama_client import OllamaClassifier
 from services.nudge import needs_followup, waiting_days
@@ -24,7 +24,15 @@ STATE_FILE = ROOT / ".state.json"  # label cache: email id -> {label, company, r
 
 
 def _load_state() -> dict:
-    return json.loads(STATE_FILE.read_text(encoding="utf-8")) if STATE_FILE.exists() else {}
+    if not STATE_FILE.exists():
+        return {}
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:  # crash mid-write left a truncated file: emails re-classify, nothing lost
+        STATE_FILE.rename(STATE_FILE.with_suffix(".json.bak"))
+        print(f"WARNING: .state.json was corrupt - backed up to .state.json.bak, starting fresh",
+              file=sys.stderr)
+        return {}
 
 
 def report(rows: list[dict]) -> None:
@@ -53,8 +61,8 @@ def _publish(records, state) -> list[dict]:
     rows = merge(load(), records)
     save(rows)
     # ponytail: data.js instead of fetch(tracker.csv) - file:// blocks fetch, double-click must work
-    (ROOT / "ui" / "data.js").write_text(
-        "window.TRACKER_DATA = " + json.dumps(rows, indent=1) + ";\n", encoding="utf-8")
+    atomic_write(ROOT / "ui" / "data.js",
+                 "window.TRACKER_DATA = " + json.dumps(rows, indent=1) + ";\n")
     return rows
 
 
@@ -74,18 +82,32 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
     if new:
         print(f"Classifying {len(new)} new email(s) with Ollama...", flush=True)
         clf = OllamaClassifier()
-        for i, rec in enumerate(new, 1):
-            try:
-                done = clf.classify(rec)
-            except Exception as exc:  # one bad email != lost batch
-                print(f"  skip {rec.subject[:40]!r}: {exc}", file=sys.stderr, flush=True)
-                continue
-            state[done.id] = {"label": done.label, "company": done.company, "role": done.role}
-            if i % 10 == 0:
-                STATE_FILE.write_text(json.dumps(state, indent=1), encoding="utf-8")
-                _publish(records, state)  # UI grows live
-                print(f"  {i}/{len(new)} classified", flush=True)
-        STATE_FILE.write_text(json.dumps(state, indent=1), encoding="utf-8")
+        done_count = fails = 0
+        try:
+            for rec in new:
+                try:
+                    done = clf.classify(rec)
+                except Exception as exc:  # one bad email != lost batch
+                    fails += 1
+                    print(f"  skip {rec.subject[:40]!r}: {exc}", file=sys.stderr, flush=True)
+                    if fails >= 5:  # Ollama is down/broken, not one weird email - stop
+                        raise SystemExit(f"{fails} emails in a row failed - giving up. "
+                                         f"Progress saved, fix Ollama and re-run.") from exc
+                    continue
+                fails = 0
+                done_count += 1
+                state[done.id] = {"label": done.label, "company": done.company, "role": done.role}
+                if done_count % 10 == 0:
+                    atomic_write(STATE_FILE, json.dumps(state, indent=1))
+                    _publish(records, state)  # UI grows live
+                    print(f"  {done_count}/{len(new)} classified", flush=True)
+        except (KeyboardInterrupt, SystemExit) as exc:  # Ctrl+C or Ollama died: keep everything so far
+            atomic_write(STATE_FILE, json.dumps(state, indent=1))
+            rows = _publish(records, state)
+            print(f"\nStopped early ({done_count}/{len(new)} classified this run) - "
+                  f"progress saved, dashboard updated. Re-run to continue.", file=sys.stderr)
+            raise SystemExit(130 if isinstance(exc, KeyboardInterrupt) else str(exc) or 1)
+        atomic_write(STATE_FILE, json.dumps(state, indent=1))
 
     rows = _publish(records, state)
     print(f"Saved tracker.csv ({len(rows)} rows), processed {len(records)} email(s), "

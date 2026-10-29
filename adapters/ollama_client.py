@@ -39,6 +39,11 @@ def _generate(prompt: str) -> dict:
             f"Ollama did not answer in {TIMEOUT}s (first run loads the model).\n"
             f"Fix: retry, or raise OLLAMA_TIMEOUT={TIMEOUT * 2}"
         ) from exc
+    except (json.JSONDecodeError, KeyError) as exc:  # server answered but with garbage
+        raise SystemExit(
+            f"Ollama at {HOST} answered but not with JSON ({exc}).\n"
+            f"Fix: check `ollama serve` output; retry the run."
+        ) from exc
 
 
 _EMPTY = {"", "null", "none", "n/a", "na", "-", "unknown"}
