@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 
 from core.models import EmailRecord
+from email.utils import parseaddr
 
 # label -> status (None = no status change, e.g. followups and newsletters)
 STATUS_BY_LABEL = {
@@ -44,8 +45,11 @@ def merge(existing: list[dict], records: list[EmailRecord]) -> list[dict]:
                               {"company": rec.company, "role": rec.role or "",
                                "status": "", "last_contact": ""})
         row["last_contact"] = rec.date
+        row["email"] = parseaddr(rec.from_addr)[1] or row.get("email", "")  # newest sender wins
         if status and RANK[status] >= RANK.get(row["status"], 0):  # never move backwards
             row["status"] = status
+    for row in rows.values():
+        row.setdefault("email", "")  # rows from an old CSV (pre-email column)
     return sorted(rows.values(), key=_key)
 
 
@@ -72,6 +76,7 @@ def _self_check() -> None:
                            mail("6", "Acme", "Dev", "followup", "2026-10-07")])
     assert len(out) == 1 and out[0]["status"] == "applied"          # unchanged
     assert out[0]["last_contact"] == "2026-10-07"                   # date bumped
+    assert out[0]["email"] == "x@y.z"                               # sender captured
     print("OK: merge (advance, never-downgrade, skip, merge-existing) passed")
 
 

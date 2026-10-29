@@ -31,8 +31,8 @@ def save(rows: list[dict], path: Path = DEFAULT_PATH) -> None:
 
 def _self_check() -> None:
     tmp = Path("._tracker_test.csv")
-    rows = [{"company": "Acme", "role": "Dev", "status": "applied",
-             "last_contact": "2026-10-01"}]
+    rows = [{"company": "Acme", "role": "Dev", "email": "jane@acme.com",
+             "status": "applied", "last_contact": "2026-10-01"}]
     try:
         save(rows, tmp)
         back = load(tmp)

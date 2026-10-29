@@ -10,18 +10,22 @@
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text);
          font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; padding:32px 24px; }
-  .wrap { max-width:900px; margin:0 auto; }
+  .wrap { max-width:960px; margin:0 auto; }
   h1 { margin:0 0 4px; font-size:24px; }
   #summary { color:var(--dim); margin:0 0 20px; }
   #filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
   button { background:var(--card); color:var(--text); border:1px solid var(--line);
-           border-radius:99px; padding:6px 14px; font-size:13px; cursor:pointer; }
+           border-radius:99px; padding:6px 14px; font-size:13px; cursor:pointer; font-family:inherit; }
+  button:hover:not(:disabled) { border-color:var(--dim); }
   button.on { background:var(--text); color:var(--bg); border-color:var(--text); }
+  button:disabled { opacity:.35; cursor:default; }
   table { width:100%; border-collapse:collapse; background:var(--card);
           border:1px solid var(--line); border-radius:10px; overflow:hidden; }
   th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
   th { color:var(--dim); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
   tr:last-child td { border-bottom:none; }
+  a { color:var(--applied); text-decoration:none; }
+  a:hover { text-decoration:underline; }
   .badge { font-size:12px; padding:2px 10px; border-radius:99px; color:#fff; white-space:nowrap; }
   .s-applied        { background:var(--applied); }
   .s-interviewing   { background:var(--interviewing); }
@@ -31,6 +35,13 @@
   .nudge { margin-left:8px; background:var(--nudge); color:#1a1200; }
   .stale { color:var(--nudge); }
   .empty { padding:24px; color:var(--dim); text-align:center; }
+  /* pager */
+  #pager { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+           justify-content:center; margin-top:16px; color:var(--dim); font-size:13px; }
+  #pager button.num { min-width:34px; padding:6px 0; }
+  #range { margin-right:4px; }
+  #pageSize { background:var(--card); color:var(--text); border:1px solid var(--line);
+              border-radius:8px; padding:5px 8px; font-size:13px; }
 </style>
 </head>
 <body>
@@ -39,10 +50,11 @@
   <p id="summary">loading…</p>
   <div id="filters"></div>
   <table>
-    <thead><tr><th>Company</th><th>Role</th><th>Status</th><th>Last contact</th><th>Waiting</th></tr></thead>
+    <thead><tr><th>Company</th><th>Role</th><th>Contact</th><th>Status</th><th>Last contact</th><th>Waiting</th></tr></thead>
     <tbody id="rows"></tbody>
   </table>
   <div id="empty" class="empty" hidden></div>
+  <div id="pager"></div>
   <p style="color:var(--dim);font-size:13px;text-align:center;margin-top:24px">
     Processed 100% locally with open-source AI (Ollama) — your mail never leaves this machine.
   </p>
@@ -54,50 +66,100 @@
 const NUDGE_DAYS = 7;
 const STATUSES = ["all", "followup", "applied", "interviewing", "rejected", "offer"];
 const today = new Date();
-let filter = "all";
+
+// EAGER load: data.js is one small in-memory file - lazy-loading it would only add a spinner.
+// LAZY render: only the current page's rows are built into the DOM.
+let DATA = window.TRACKER_DATA || [];
+let filter = "all", page = 1, pageSize = 25;
 
 const days = r => r.last_contact
   ? Math.floor((today - new Date(r.last_contact)) / 864e5) : null;
 const isNudge = r =>
   (r.status === "" || r.status === "applied") && days(r) !== null && days(r) >= NUDGE_DAYS;
 
-function render() {
-  const data = (window.TRACKER_DATA || []);
-  const shown = data.filter(r =>
-    filter === "all" ? true :
-    filter === "followup" ? isNudge(r) : (r.status || "") === filter);
+const filtered = () => DATA.filter(r =>
+  filter === "all" ? true :
+  filter === "followup" ? isNudge(r) : (r.status || "") === filter);
 
-  document.getElementById("rows").innerHTML = shown.map(r => `
-    <tr>
-      <td>${r.company || "?"}</td>
-      <td>${r.role || "-"}</td>
+// escape before innerHTML - subjects/company names come from email data
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function rowHTML(r) {
+  return `<tr>
+      <td>${esc(r.company) || "?"}</td>
+      <td>${esc(r.role) || "-"}</td>
+      <td>${r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : "-"}</td>
       <td><span class="badge s-${r.status || "unclassified"}">${r.status || "unclassified"}</span>${
         isNudge(r) ? '<span class="badge nudge">follow up</span>' : ""}</td>
       <td>${(r.last_contact || "").slice(0, 10) || "-"}</td>
       <td class="${isNudge(r) ? "stale" : ""}">${days(r) === null ? "-" : days(r) + "d"}</td>
-    </tr>`).join("");
-
-  const empty = document.getElementById("empty");
-  empty.hidden = shown.length > 0;
-  empty.textContent = data.length ? "Nothing matches this filter."
-                                  : "No data yet - run: python main.py";
-
-  const nudges = data.filter(isNudge).length;
-  document.getElementById("summary").textContent =
-    `${data.length} tracked · ${nudges} need follow-up · last run ${new Date().toLocaleDateString()}`;
-
-  document.querySelectorAll("#filters button").forEach(b =>
-    b.classList.toggle("on", b.dataset.f === filter));
+    </tr>`;
 }
 
-document.getElementById("filters").innerHTML = STATUSES.map(f => {
-  const data = window.TRACKER_DATA || [];
-  const n = f === "all" ? data.length : f === "followup"
-      ? data.filter(isNudge).length : data.filter(r => (r.status || "") === f).length;
-  return `<button data-f="${f}" onclick="filter='${f}';render()">${f} (${n})</button>`;
-}).join("");
+function renderFilters() {
+  document.getElementById("filters").innerHTML = STATUSES.map(f => {
+    const n = f === "all" ? DATA.length : f === "followup"
+        ? DATA.filter(isNudge).length : DATA.filter(r => (r.status || "") === f).length;
+    return `<button data-f="${f}" class="${f === filter ? "on" : ""}"
+                    onclick="setFilter('${f}')">${f} (${n})</button>`;
+  }).join("");
+}
 
-render();
+function renderPager(total, pages) {
+  if (!pages || pages <= 1) { document.getElementById("pager").innerHTML = ""; return; }
+  const from = (page - 1) * pageSize + 1, to = Math.min(page * pageSize, total);
+  // window of page buttons around current page - stays small no matter how many pages
+  const win = [];
+  for (let p = 1; p <= pages; p++)
+    if (p === 1 || p === pages || Math.abs(p - page) <= 1) win.push(p);
+  let nums = "", prev = 0;
+  for (const p of win) {
+    if (p - prev > 1) nums += "<span>…</span>";
+    nums += `<button class="num ${p === page ? "on" : ""}" onclick="setPage(${p})">${p}</button>`;
+    prev = p;
+  }
+  document.getElementById("pager").innerHTML =
+    `<span id="range">${from}–${to} of ${total}</span>
+     <select id="pageSize" onchange="setSize(this.value)">
+       ${[10, 25, 50, 100].map(n => `<option ${n === pageSize ? "selected" : ""}>${n}</option>`).join("")}
+     </select>
+     <button ${page === 1 ? "disabled" : ""} onclick="setPage(${page - 1})">‹ prev</button>
+     ${nums}
+     <button ${page === pages ? "disabled" : ""} onclick="setPage(${page + 1})">next ›</button>`;
+}
+
+function render() {
+  const rows = filtered();
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+  if (page > pages) page = pages;  // filter shrank the list -> clamp
+  const slice = rows.slice((page - 1) * pageSize, page * pageSize);  // lazy: build only this
+
+  document.getElementById("rows").innerHTML = slice.map(rowHTML).join("");
+  const empty = document.getElementById("empty");
+  empty.hidden = rows.length > 0;
+  empty.textContent = DATA.length ? "Nothing matches this filter."
+                                  : "No data yet - run: python main.py";
+  const nudges = DATA.filter(isNudge).length;
+  document.getElementById("summary").textContent =
+    `${DATA.length} tracked · ${nudges} need follow-up · last run ${new Date().toLocaleDateString()}`;
+  renderFilters();
+  renderPager(rows.length, pages);
+  // URL state so refresh/share keeps filter+page (cheap, no router needed)
+  history.replaceState(null, "", `#${filter}/${page}`);
+}
+
+const setFilter = f => { filter = f; page = 1; render(); };
+const setPage  = p => { page = p; render(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+const setSize  = n => { pageSize = +n; page = 1; render(); };
+
+// restore from URL: #applied/2
+(() => {
+  const [f, p] = location.hash.slice(1).split("/");
+  if (f && STATUSES.includes(f)) filter = f;
+  if (+p > 0) page = +p;
+  render();
+})();
 </script>
 </body>
 </html>

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 LABELS = ("applied", "recruiter", "interview", "rejected", "offer", "followup", "noise")
 
 # tracker.csv columns — shared by track service and csv adapter
-FIELDS = ("company", "role", "status", "last_contact")
+FIELDS = ("company", "role", "email", "status", "last_contact")
 
 
 @dataclass
