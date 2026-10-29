@@ -26,9 +26,10 @@ STATUS_BY_LABEL = {
     "rejected": "rejected",
     "offer": "offer",
     "followup": None,
+    "promo": "promo",   # pseudo-status: visible badge, never chased, never outranks real states
     "noise": None,
 }
-RANK = {"": 0, "applied": 1, "interviewing": 2, "rejected": 3, "offer": 4}
+RANK = {"": 0, "applied": 1, "interviewing": 2, "rejected": 3, "offer": 4, "promo": 0}
 
 
 def _key(row: dict) -> tuple[str, str]:
@@ -40,14 +41,18 @@ def _key(row: dict) -> tuple[str, str]:
 def merge(existing: list[dict], records: list[EmailRecord]) -> list[dict]:
     rows = {_key(r): dict(r) for r in existing}
     for rec in sorted(records, key=lambda r: r.date):  # oldest first -> newest wins
-        if not rec.company:
-            continue  # ponytail: unidentifiable sender = nothing to track
+        if not rec.company or rec.label == "noise":
+            continue  # no company, or noise: nothing to track (promo handled below)
         status = STATUS_BY_LABEL.get(rec.label, "")
-        row = rows.setdefault(_key({"company": rec.company, "role": rec.role or ""}),
-                              {"company": rec.company, "role": rec.role or "",
-                               "status": "", "last_contact": ""})
-        row["last_contact"] = rec.date
-        row["email"] = parseaddr(rec.from_addr)[1] or row.get("email", "")  # newest sender wins
+        key = _key({"company": rec.company, "role": rec.role or ""})
+        fresh = key not in rows
+        row = rows.setdefault(key, {"company": rec.company, "role": rec.role or "",
+                                    "status": "", "last_contact": ""})
+        if rec.label != "promo" or fresh:
+            # promo keeps its own arrival date only on a fresh row - it never
+            # resets the silence clock of a real application
+            row["last_contact"] = rec.date
+            row["email"] = parseaddr(rec.from_addr)[1] or row.get("email", "")
         if status and RANK[status] >= RANK.get(row["status"], 0):  # never move backwards
             row["status"] = status
     for row in rows.values():
@@ -79,7 +84,20 @@ def _self_check() -> None:
     assert len(out) == 1 and out[0]["status"] == "applied"          # unchanged
     assert out[0]["last_contact"] == "2026-10-07"                   # date bumped
     assert out[0]["email"] == "x@y.z"                               # sender captured
-    print("OK: merge (advance, never-downgrade, skip, merge-existing) passed")
+
+    # noise with company -> no row at all (promo mail must not pollute the tracker)
+    out = merge([], [mail("7", "Google", None, "noise", "2026-10-07")])
+    assert out == [], out
+
+    # promo: own row gets promo badge + own date; promo on a REAL row never bumps its date
+    out = merge([], [mail("8", "Indeed", "Dev", "promo", "2026-10-06")])
+    assert out[0]["status"] == "promo" and out[0]["last_contact"] == "2026-10-06", out
+    out = merge([{"company": "indeed", "role": "Dev", "status": "applied",
+                  "last_contact": "2026-10-01", "email": ""}],
+                [mail("9", "Indeed", "Dev", "promo", "2026-10-06")])
+    assert out[0]["status"] == "applied", out               # real status kept
+    assert out[0]["last_contact"] == "2026-10-01", out      # date NOT reset by promo
+    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip) passed")
 
 
 if __name__ == "__main__":

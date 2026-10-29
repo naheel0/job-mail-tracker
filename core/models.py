@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-LABELS = ("applied", "recruiter", "interview", "rejected", "offer", "followup", "noise")
+LABELS = ("applied", "recruiter", "interview", "rejected", "offer", "followup", "promo", "noise")
 
 # tracker.csv columns — shared by track service and csv adapter
 FIELDS = ("company", "role", "email", "status", "last_contact")

@@ -32,6 +32,7 @@
   .s-rejected       { background:var(--rejected); }
   .s-offer          { background:var(--offer); }
   .s-unclassified   { background:#4b5563; }
+  .s-promo          { background:#374151; color:#9ca3af; }
   .nudge { margin-left:8px; background:var(--nudge); color:#1a1200; }
   .stale { color:var(--nudge); }
   .empty { padding:24px; color:var(--dim); text-align:center; }
@@ -64,7 +65,7 @@
 <script>
 // ponytail: same nudge rule as services/nudge.py (>=7d + still 'applied') - keep in sync
 const NUDGE_DAYS = 7;
-const STATUSES = ["all", "followup", "applied", "interviewing", "rejected", "offer"];
+const STATUSES = ["all", "followup", "applied", "interviewing", "rejected", "offer", "promo"];
 const today = new Date();
 
 // EAGER load: data.js is one small in-memory file - lazy-loading it would only add a spinner.
@@ -83,8 +84,10 @@ const days = r => {
 const isNudge = r =>
   (r.status === "" || r.status === "applied") && days(r) !== null && days(r) >= NUDGE_DAYS;
 
+const isPromo = r => (r.status || "") === "promo";
+
 const filtered = () => DATA.filter(r =>
-  filter === "all" ? true :
+  filter === "all" ? !isPromo(r) :   // promos hidden by default - click the promo pill to see them
   filter === "followup" ? isNudge(r) : (r.status || "") === filter);
 
 // escape before innerHTML - subjects/company names come from email data
@@ -106,7 +109,7 @@ function rowHTML(r) {
 
 function renderFilters() {
   document.getElementById("filters").innerHTML = STATUSES.map(f => {
-    const n = f === "all" ? DATA.length : f === "followup"
+    const n = f === "all" ? DATA.filter(r => !isPromo(r)).length : f === "followup"
         ? DATA.filter(isNudge).length : DATA.filter(r => (r.status || "") === f).length;
     return `<button data-f="${f}" class="${f === filter ? "on" : ""}"
                     onclick="setFilter('${f}')">${f} (${n})</button>`;
@@ -148,8 +151,11 @@ function render() {
   empty.textContent = DATA.length ? "Nothing matches this filter."
                                   : "No data yet - run: python main.py";
   const nudges = DATA.filter(isNudge).length;
+  const promos = DATA.filter(isPromo).length;
   document.getElementById("summary").textContent =
-    `${DATA.length} tracked · ${nudges} need follow-up · last run ${new Date().toLocaleDateString()}`;
+    `${DATA.length - promos} tracked · ${nudges} need follow-up` +
+    (promos ? ` · ${promos} promo (hidden by default)` : "") +
+    ` · last run ${new Date().toLocaleDateString()}`;
   renderFilters();
   renderPager(rows.length, pages);
   // URL state so refresh/share keeps filter+page (cheap, no router needed)

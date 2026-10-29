@@ -12,7 +12,18 @@ label meanings:
 - rejected: application rejected / not selected
 - offer: job offer
 - followup: reminder to follow up on an application
-- noise: everything else (newsletters, unrelated)
+- promo: platform alert / digest / recommendation / newsletter, not tied to a real application
+- noise: everything else (unrelated mail)
+
+Platform rules (Indeed, Naukri, LinkedIn, Glassdoor, Shine, TimesJobs, foundit):
+- A job ALERT, digest, recommendation, or promo ("and 2 more new jobs",
+  "jobs you might like", "top companies are hiring", "job search tips",
+  "featured jobs for you") -> label "promo", NEVER "recruiter" or "applied".
+- If the email confirms the USER'S OWN application ("Indeed Application: ...",
+  "application received"), label "applied" and set company to the REAL EMPLOYER
+  named in the subject or body (pattern: "Role at Company in City" -> company is
+  that Company), NEVER the platform name. Only use the platform name as company
+  if no employer is stated anywhere.
 
 Extract company and role only when clearly present. Lowercase values. Null otherwise.
 

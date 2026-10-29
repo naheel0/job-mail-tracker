@@ -51,13 +51,14 @@ def _self_check() -> None:
         row("Ghosted", "applied", "2026-10-20"),     # 8d -> flag
         row("Talking", "interviewing", "2026-10-01"),  # in progress -> no
         row("NoDate", "applied", ""),                # unparsable -> no
+        row("PromoCo", "promo", "2026-10-01"),       # promo badge: never chased -> no
     ]
     flagged = needs_followup(rows, today, days=7)
     assert [r["company"] for r in flagged] == ["OldCo", "Ghosted"], flagged
     assert waiting_days(rows[0], today) == 27
     assert waiting_days(rows[4], today) is None
     assert needs_followup(rows, today, days=30) == []  # threshold respected
-    print("OK: nudge (flag stale applied, skip fresh/in-progress/bad-date, threshold) passed")
+    print("OK: nudge (flag stale applied, skip promo/fresh/in-progress/bad-date) passed")
 
 
 if __name__ == "__main__":
