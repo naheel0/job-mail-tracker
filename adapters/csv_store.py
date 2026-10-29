@@ -30,17 +30,26 @@ def load(path: Path = DEFAULT_PATH) -> list[dict]:
 
 
 def atomic_write(path: Path, text: str) -> None:
-    """Write via temp file + rename: a crash mid-write can't leave a truncated file."""
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    """Write via temp file + rename: a crash mid-write can't leave a truncated file.
+    Pid in the name: two concurrent runs must not share the same tmp file."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)  # atomic on Windows
+
+
+def _excel_safe(value):
+    """A cell like =cmd|... runs only after a click in Excel - prefix it inert."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t"):
+        return "'" + value
+    return value
 
 
 def save(rows: list[dict], path: Path = DEFAULT_PATH) -> None:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=FIELDS, restval="")
     writer.writeheader()
-    writer.writerows(rows)
+    writer.writerows([{k: _excel_safe(v) for k, v in row.items() if k in FIELDS}
+                      for row in rows])
     atomic_write(path, buf.getvalue())
 
 

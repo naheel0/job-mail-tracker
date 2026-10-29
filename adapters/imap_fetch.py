@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import imaplib
 import os
+import ssl
 import sys
 from datetime import date, timedelta
 from email import message_from_bytes
@@ -35,7 +36,7 @@ def _env(name: str) -> str:
         return os.environ[name]
     env_file = ROOT / ".env"
     if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
+        for line in env_file.read_text(encoding="utf-8-sig").splitlines():  # utf-8-sig: eats Notepad's BOM
             line = line.strip()
             if line.startswith(name + "="):
                 return line.split("=", 1)[1].strip().strip("\"'")
@@ -79,7 +80,13 @@ def sync(folder: Path, days: int | None = None) -> int:
     """Download emails since the last sync into folder. Returns count of new files."""
     host, user, pw = _cfg()
     since = _since()
-    imap = imaplib.IMAP4_SSL(host)
+    try:
+        # default context: verify the server cert - imaplib's own default does NOT,
+        # which would expose the app password to a man-in-the-middle
+        imap = imaplib.IMAP4_SSL(host, ssl_context=ssl.create_default_context())
+    except OSError as exc:
+        raise SystemExit(f"Cannot reach IMAP server {host} ({exc}).\n"
+                         f"Fix: check the host name and your network connection.") from exc
     try:
         try:
             imap.login(user, pw)
@@ -93,7 +100,9 @@ def sync(folder: Path, days: int | None = None) -> int:
                 "  4. spaces in the app password are fine, quotes optional"
             ) from exc
         imap.select("INBOX")
-        _, found = imap.search(None, "SINCE", since.strftime("%d-%b-%Y"))
+        typ, found = imap.search(None, "SINCE", since.strftime("%d-%b-%Y"))
+        if typ != "OK":  # otherwise we'd write today's date and silently skip these forever
+            raise SystemExit(f"IMAP search failed ({found}) - not advancing sync state, retry later.")
         new = 0
         for num in found[0].split():
             _, data = imap.fetch(num, "(RFC822)")
@@ -115,11 +124,20 @@ def _self_check() -> None:
         assert _save(raw, folder) is True, "first save should write"
         assert _save(raw, folder) is False, "same Message-ID must dedup"
         assert len(list(folder.glob('*.eml'))) == 1
+
+    # missing config: temporarily point ROOT at an empty dir so the real .env is ignored
+    global ROOT
+    saved_root, ROOT = ROOT, Path(tempfile.mkdtemp())
     try:
-        _cfg()  # no .env in test env -> must explain how to configure
-        raise AssertionError("missing config should SystemExit")
-    except SystemExit as exc:
-        assert "IMAP not configured" in str(exc), exc
+        try:
+            _cfg()
+            raise AssertionError("missing config should SystemExit")
+        except AssertionError:
+            raise
+        except SystemExit as exc:
+            assert "IMAP not configured" in str(exc), exc
+    finally:
+        ROOT = saved_root
     print("OK: imap fetch (save, dedup-by-Message-ID, config error) passed")
 
 

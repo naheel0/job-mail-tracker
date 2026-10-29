@@ -29,7 +29,7 @@ def _load_state() -> dict:
     try:
         return json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except json.JSONDecodeError:  # crash mid-write left a truncated file: emails re-classify, nothing lost
-        STATE_FILE.rename(STATE_FILE.with_suffix(".json.bak"))
+        STATE_FILE.replace(STATE_FILE.with_suffix(".json.bak"))  # replace: overwrite an older .bak
         print(f"WARNING: .state.json was corrupt - backed up to .state.json.bak, starting fresh",
               file=sys.stderr)
         return {}
@@ -79,20 +79,24 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
 
     state = _load_state()
     new = [r for r in records if r.id not in state]
+    done_count = 0
     if new:
         print(f"Classifying {len(new)} new email(s) with Ollama...", flush=True)
         clf = OllamaClassifier()
-        done_count = fails = 0
+        fails = 0
         try:
             for rec in new:
                 try:
                     done = clf.classify(rec)
                 except Exception as exc:  # one bad email != lost batch
+                    # note: _generate raises SystemExit for connection problems, which
+                    # bypasses this and stops at email #1 (fail-fast). This counter is
+                    # for systematic per-email failures (e.g. a bug in answer parsing).
                     fails += 1
                     print(f"  skip {rec.subject[:40]!r}: {exc}", file=sys.stderr, flush=True)
-                    if fails >= 5:  # Ollama is down/broken, not one weird email - stop
+                    if fails >= 5:
                         raise SystemExit(f"{fails} emails in a row failed - giving up. "
-                                         f"Progress saved, fix Ollama and re-run.") from exc
+                                         f"Progress saved, fix the cause and re-run.") from exc
                     continue
                 fails = 0
                 done_count += 1
@@ -103,7 +107,7 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
                     print(f"  {done_count}/{len(new)} classified", flush=True)
         except (KeyboardInterrupt, SystemExit) as exc:  # Ctrl+C or Ollama died: keep everything so far
             atomic_write(STATE_FILE, json.dumps(state, indent=1))
-            rows = _publish(records, state)
+            _publish(records, state)
             print(f"\nStopped early ({done_count}/{len(new)} classified this run) - "
                   f"progress saved, dashboard updated. Re-run to continue.", file=sys.stderr)
             raise SystemExit(130 if isinstance(exc, KeyboardInterrupt) else str(exc) or 1)
@@ -111,7 +115,7 @@ def main(folder: Path = ROOT / "inbox", with_sync: bool = False) -> None:
 
     rows = _publish(records, state)
     print(f"Saved tracker.csv ({len(rows)} rows), processed {len(records)} email(s), "
-          f"{len(new)} newly classified.")
+          f"{done_count} newly classified.")
     report(rows)
 
 

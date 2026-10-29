@@ -8,7 +8,9 @@ from __future__ import annotations
 import hashlib
 import re
 import sys
+from datetime import timezone
 from email import message_from_file
+from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -45,21 +47,27 @@ def _plain_body(msg: Message) -> str:
 
 
 def _date_iso(msg: Message) -> str:
-    raw = msg.get("Date", "")
+    """Always UTC ISO 8601: string order must equal time order for 'newest wins'.
+    Unparsable date -> '' (the email is kept; a raw garbage date breaks the UI)."""
     try:
-        return parsedate_to_datetime(raw).isoformat()
+        dt = parsedate_to_datetime(msg.get("Date", ""))
     except (ValueError, TypeError):
-        return raw  # ponytail: raw date beats losing the email
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)  # email spec: no offset = UTC
+    return dt.astimezone(timezone.utc).isoformat()
 
 
 def parse_file(path: Path) -> EmailRecord:
     with path.open(encoding="utf-8", errors="replace") as f:
         msg = message_from_file(f)
     message_id = msg.get("Message-ID") or f"{msg.get('From')}|{msg.get('Date')}|{msg.get('Subject')}"
+    # decode RFC 2047 encoded words (=?UTF-8?B?...?=) so the model reads real text
+    decode = lambda h: str(make_header(decode_header(h or "")))
     return EmailRecord(
         id=hashlib.sha256(message_id.encode()).hexdigest()[:16],
-        from_addr=msg.get("From", ""),
-        subject=msg.get("Subject", ""),
+        from_addr=decode(msg.get("From")),
+        subject=decode(msg.get("Subject")),
         date=_date_iso(msg),
         body=_plain_body(msg),
     )

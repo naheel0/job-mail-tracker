@@ -72,8 +72,14 @@ const today = new Date();
 let DATA = window.TRACKER_DATA || [];
 let filter = "all", page = 1, pageSize = 25;
 
-const days = r => r.last_contact
-  ? Math.floor((today - new Date(r.last_contact)) / 864e5) : null;
+const days = r => {
+  const d = r.last_contact ? new Date(r.last_contact) : null;
+  if (!d || isNaN(d)) return null;  // unparsable date -> "-", matches Python (which skips these)
+  // calendar-day diff over UTC date parts: mirrors services/nudge.py's date arithmetic
+  const a = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.max(0, Math.floor((b - a) / 864e5));  // clamp: future server clock -> 0d, not -X
+};
 const isNudge = r =>
   (r.status === "" || r.status === "applied") && days(r) !== null && days(r) >= NUDGE_DAYS;
 
@@ -86,13 +92,14 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function rowHTML(r) {
+  const status = esc(r.status || "unclassified");
   return `<tr>
       <td>${esc(r.company) || "?"}</td>
       <td>${esc(r.role) || "-"}</td>
       <td>${r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : "-"}</td>
-      <td><span class="badge s-${r.status || "unclassified"}">${r.status || "unclassified"}</span>${
+      <td><span class="badge s-${status}">${status}</span>${
         isNudge(r) ? '<span class="badge nudge">follow up</span>' : ""}</td>
-      <td>${(r.last_contact || "").slice(0, 10) || "-"}</td>
+      <td>${esc((r.last_contact || "").slice(0, 10)) || "-"}</td>
       <td class="${isNudge(r) ? "stale" : ""}">${days(r) === null ? "-" : days(r) + "d"}</td>
     </tr>`;
 }

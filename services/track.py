@@ -32,7 +32,9 @@ RANK = {"": 0, "applied": 1, "interviewing": 2, "rejected": 3, "offer": 4}
 
 
 def _key(row: dict) -> tuple[str, str]:
-    return (row["company"].lower(), (row.get("role") or "").lower())
+    # .get guards corrupt CSV rows (company=None would crash .lower())
+    return ((row.get("company") or "").strip().lower(),
+            (row.get("role") or "").strip().lower())
 
 
 def merge(existing: list[dict], records: list[EmailRecord]) -> list[dict]:

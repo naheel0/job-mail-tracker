@@ -59,19 +59,30 @@ def _clean(value) -> str | None:
 
 def classify(record: EmailRecord) -> EmailRecord:
     """Fills label/company/role. Bad model output: retry once, then fall back to 'noise'."""
+    hint = ""
     answer: dict = {}
-    for _ in range(2):  # ponytail: format:'json' already guarantees JSON; this catches wrong shape
+    for _ in range(2):  # ponytail: format:'json' guarantees JSON, not shape - we check shape here
         answer = _generate(PROMPT.format(sender=record.from_addr, subject=record.subject,
-                                         date=record.date, body=record.body))
-        if isinstance(answer, dict) and answer.get("label") in LABELS:
+                                         date=record.date, body=record.body) + hint)
+        if _label_of(answer):
             break
-    record.label = answer.get("label") if answer.get("label") in LABELS else "noise"
-    if isinstance(answer, dict):
+        hint = ('\nAnswer ONLY a JSON object like {"label":"applied","company":null,'
+                '"role":null} where label is one of: ' + ", ".join(LABELS))
+    record.label = _label_of(answer) or "noise"
+    if isinstance(answer, dict):  # a bare string/array answer must not crash the loop
         record.company = _clean(answer.get("company"))
         record.role = _clean(answer.get("role"))
     else:
         record.company = record.role = None
     return record
+
+
+def _label_of(answer) -> str | None:
+    """Accept the label case-insensitively; non-dict answers -> None (caller falls back)."""
+    label = answer.get("label") if isinstance(answer, dict) else None
+    if isinstance(label, str) and label.strip().lower() in LABELS:
+        return label.strip().lower()
+    return None
 
 
 class OllamaClassifier:
