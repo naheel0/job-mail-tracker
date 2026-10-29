@@ -52,6 +52,8 @@ def merge(existing: list[dict], records: list[EmailRecord]) -> list[dict]:
             # promo keeps its own arrival date only on a fresh row - it never
             # resets the silence clock of a real application
             row["last_contact"] = rec.date
+            # direction of the mail that set last_contact = who spoke last
+            row["dir"] = rec.direction
             # contact = the other party: sent mail -> recipient, received -> sender
             peer = rec.to_addr if rec.direction == "sent" else rec.from_addr
             # getaddresses (list form): multi-recipient To: "a@x, b@x" yields the
@@ -60,8 +62,15 @@ def merge(existing: list[dict], records: list[EmailRecord]) -> list[dict]:
             row["email"] = (got[0][1] if got else "") or row.get("email", "")
         if status and RANK[status] >= RANK.get(row["status"], 0):  # never move backwards
             row["status"] = status
+    # direction of the mail that set last_contact = who spoke last
+    dirs = {(_key({"company": r.company, "role": r.role or ""}), r.date): r.direction
+            for r in records if r.company and r.label != "noise"}
     for row in rows.values():
         row.setdefault("email", "")  # rows from an old CSV (pre-email column)
+        if not row.get("dir"):
+            # old CSV rows + promo-only rows (promo never re-enters the branch):
+            # recover the direction of the record that set last_contact (same key+date)
+            row["dir"] = dirs.get((_key(row), row.get("last_contact") or ""), "")
     # inbox order: most recent send/receive first (date+time, ISO = true
     # chronological string order); rows with no date sink to the bottom.
     # "" sorts smallest, so reverse=True puts empty dates last.
@@ -79,6 +88,7 @@ def _self_check() -> None:
                      mail("2", "Acme", "Dev", "interview", "2026-10-05")])
     assert len(out) == 1 and out[0]["status"] == "interviewing", out
     assert out[0]["last_contact"] == "2026-10-05"
+    assert out[0]["dir"] == "inbox"        # newest mail was received
 
     # never downgrade: rejected(6th) then old applied(2nd) -> stays rejected
     out = merge([], [mail("3", "Beta", "QA", "rejected", "2026-10-06"),
@@ -124,7 +134,17 @@ def _self_check() -> None:
                   "last_contact": "2026-10-08", "email": "me@gmail.com"}],
                 [mail("13", "Acme", "Dev", "followup", "2026-10-08"), sent])
     assert out[0]["email"] == "hr@acme.com", out
-    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip, inbox-order, contact) passed")
+    assert out[0]["dir"] == "sent"         # last spoke = the sent follow-up
+    # old CSV rows (no dir/email keys) must not crash and default to blank
+    out = merge([{"company": "Old", "role": "", "status": "applied",
+                  "last_contact": "2026-10-01", "email": ""}], [])
+    assert out[0]["dir"] == "" and out[0]["email"] == "", out
+    # promo-only row: dir backfilled from the record that set last_contact
+    out = merge([{"company": "Fresh", "role": "", "status": "promo",
+                  "last_contact": "2026-10-06", "email": "a@b.c"}],
+                [mail("15", "Fresh", None, "promo", "2026-10-06")])
+    assert out[0]["dir"] == "inbox" and out[0]["last_contact"] == "2026-10-06", out
+    print("OK: merge (advance, never-downgrade, skip, promo, noise-skip, inbox-order, contact, dir) passed")
 
 
 if __name__ == "__main__":

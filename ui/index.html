@@ -79,7 +79,7 @@
   <div id="filters"></div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th scope="col">Company</th><th scope="col">Role</th><th scope="col">Contact</th><th scope="col">Status</th><th scope="col">Last contact</th><th scope="col">Waiting</th></tr></thead>
+      <thead><tr><th scope="col">Direction</th><th scope="col">Company</th><th scope="col">Role</th><th scope="col">Contact</th><th scope="col">Status</th><th scope="col">Last contact</th><th scope="col">Waiting</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
@@ -128,7 +128,10 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
 
 function rowHTML(r) {
   const status = esc(r.status || "unclassified");
+  // dir = direction of the mail that last touched this row ("" on rows from an old CSV)
+  const dir = r.dir === "sent" ? "sent" : r.dir ? "received" : "";
   return `<tr>
+      <td>${dir ? `<span class="badge s-${dir}">${dir}</span>` : "-"}</td>
       <td>${esc(r.company) || "?"}</td>
       <td>${esc(r.role) || "-"}</td>
       <td class="contact">${r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : "-"}</td>
